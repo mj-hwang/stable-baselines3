@@ -10,6 +10,7 @@ from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
 from stable_baselines3.ppo import PPO
 from stable_baselines3.sac import SAC
 from stable_baselines3.td3 import TD3
+from stable_baselines3.maple import MAPLE
 
 # Small monkey patch so gym 0.21 is compatible with numpy >= 1.24
 # TODO: remove when upgrading to gym 0.26
@@ -35,6 +36,7 @@ __all__ = [
     "PPO",
     "SAC",
     "TD3",
+    "MAPLE",
     "HerReplayBuffer",
     "get_system_info",
 ]
