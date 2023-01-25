@@ -487,7 +487,9 @@ class EvalCallback(EventCallback):
                 print(f"Episode length: {mean_ep_length:.2f} +/- {std_ep_length:.2f}")
             # Add to current Logger
             self.logger.record("eval/mean_reward", float(mean_reward))
+            self.logger.record("eval/std_reward", float(std_reward))
             self.logger.record("eval/mean_ep_length", mean_ep_length)
+            self.logger.record("eval/std_ep_length", std_ep_length)
 
             if len(self._is_success_buffer) > 0:
                 success_rate = np.mean(self._is_success_buffer)
