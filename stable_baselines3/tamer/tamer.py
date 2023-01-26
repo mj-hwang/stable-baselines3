@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -7,10 +8,12 @@ from torch.nn import functional as F
 
 from stable_baselines3.common.buffers import HumanReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import get_parameters_by_name, polyak_update
+from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit
+from stable_baselines3.common.utils import get_parameters_by_name, polyak_update, should_collect_more_steps
+from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.tamer.policies import HumanMlpPolicy, SACHPolicy
 
 SelfTAMER = TypeVar("SelfTAMER", bound="TAMER")
@@ -85,7 +88,7 @@ class TAMER(OffPolicyAlgorithm):
         train_freq: Union[int, Tuple[int, str]] = 1,
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[HumanReplayBuffer]] = None,
+        replay_buffer_class: Optional[Type[HumanReplayBuffer]] = HumanReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         optimize_memory_usage: bool = False,
         ent_coef: Union[str, float] = "auto",
@@ -250,7 +253,7 @@ class TAMER(OffPolicyAlgorithm):
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
                 
                 # target human q vals
-                target_human_q_values = replay_data.humanRewards
+                target_human_q_values = replay_data.human_rewards
 
             # Get current Q-values estimates for each critic network
             # using action from the replay buffer
@@ -272,12 +275,7 @@ class TAMER(OffPolicyAlgorithm):
             )
 
             # Compute human critic loss
-            human_critic_loss = 0.5 * sum(
-                [
-                    F.mse_loss(current_q, target_human_q_values)
-                    for current_q in current_human_q_values
-                ]
-            )
+            human_critic_loss = 0.5 * sum([F.mse_loss(current_human_q, target_human_q_values) for current_human_q in current_human_q_values])
             human_critic_losses.append(human_critic_loss.item())
 
             # Optimize the human critic
@@ -353,35 +351,17 @@ class TAMER(OffPolicyAlgorithm):
             saved_pytorch_variables = ["ent_coef_tensor"]
         return state_dicts, saved_pytorch_variables
 
-def collect_rollouts(
+    def collect_rollouts(
         self,
         env: VecEnv,
         callback: BaseCallback,
         train_freq: TrainFreq,
-        replay_buffer: ReplayBuffer,
+        replay_buffer: HumanReplayBuffer,
         action_noise: Optional[ActionNoise] = None,
         learning_starts: int = 0,
         log_interval: Optional[int] = None,
     ) -> RolloutReturn:
-        """
-        Collect experiences and store them into a ``ReplayBuffer``.
 
-        :param env: The training environment
-        :param callback: Callback that will be called at each step
-            (and at the beginning and end of the rollout)
-        :param train_freq: How much experience to collect
-            by doing rollouts of current policy.
-            Either ``TrainFreq(<n>, TrainFrequencyUnit.STEP)``
-            or ``TrainFreq(<n>, TrainFrequencyUnit.EPISODE)``
-            with ``<n>`` being an integer greater than 0.
-        :param action_noise: Action noise that will be used for exploration
-            Required for deterministic policy (e.g. TD3). This can also be used
-            in addition to the stochastic policy for SAC.
-        :param learning_starts: Number of steps before learning for the warm-up phase.
-        :param replay_buffer:
-        :param log_interval: Log data every ``log_interval`` episodes
-        :return:
-        """
         # Switch to eval mode (this affects batch norm / dropout)
         self.policy.set_training_mode(False)
 
@@ -412,12 +392,18 @@ def collect_rollouts(
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
             with th.no_grad():
-                student_q_values = self.trained_model.critic(self._last_obs, actions)
-                student_q_values, _ = th.min(student_q_values, dim=1, keepdim=True)
+                student_q_values = self.trained_model.critic(
+                    th.from_numpy(self._last_obs).to(self.device),
+                    th.from_numpy(actions).to(self.device),
+                )
+                student_q_values, _ = th.min(th.cat(student_q_values, dim=1), dim=1, keepdim=True)
 
                 teacher_actions, _ = self.trained_model.predict(self._last_obs)
-                teacher_q_values = self.trained_model.critic(self._last_obs, teacher_actions)
-                teacher_q_values, _ = th.min(teacher_q_values, dim=1, keepdim=True)
+                teacher_q_values = self.trained_model.critic(
+                    th.from_numpy(self._last_obs).to(self.device),
+                    th.from_numpy(teacher_actions).to(self.device),
+                )
+                teacher_q_values, _ = th.min(th.cat(teacher_q_values, dim=1), dim=1, keepdim=True)
 
                 simulated_human_rewards = self.q_val_threshold * teacher_q_values < student_q_values
                 simulated_human_rewards = simulated_human_rewards.float()
@@ -468,7 +454,7 @@ def collect_rollouts(
 
     def _store_transition(
         self,
-        replay_buffer: ReplayBuffer,
+        replay_buffer: HumanReplayBuffer,
         buffer_action: np.ndarray,
         new_obs: Union[np.ndarray, Dict[str, np.ndarray]],
         reward: np.ndarray,
@@ -476,21 +462,7 @@ def collect_rollouts(
         dones: np.ndarray,
         infos: List[Dict[str, Any]],
     ) -> None:
-        """
-        Store transition in the replay buffer.
-        We store the normalized action and the unnormalized observation.
-        It also handles terminal observations (because VecEnv resets automatically).
 
-        :param replay_buffer: Replay buffer object where to store the transition.
-        :param buffer_action: normalized action
-        :param new_obs: next observation in the current episode
-            or first observation of the episode (when dones is True)
-        :param reward: reward for the current transition
-        :param human_reward: human reward for the current transition
-        :param dones: Termination signal
-        :param infos: List of additional information about the transition.
-            It may contain the terminal observations and information about timeout.
-        """
         # Store only the unnormalized version
         if self._vec_normalize_env is not None:
             new_obs_ = self._vec_normalize_env.get_original_obs()
