@@ -409,7 +409,7 @@ class TAMER(OffPolicyAlgorithm):
                 simulated_human_rewards = simulated_human_rewards.float()
                 simulated_human_rewards = simulated_human_rewards * 2 - 1
                 simulated_human_rewards = simulated_human_rewards.cpu()
-
+            self.q_val_threshold += 0.00000001
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
 
