@@ -8,6 +8,8 @@ from stable_baselines3.common.distributions import (
     SquashedDiagGaussianDistribution, 
     StateDependentNoiseDistribution, 
     CategoricalDistribution,
+    OneHotCategoricalDistribution,
+    RelaxedOneHotCategoricalDistribution,
 )
 from stable_baselines3.common.policies import BasePolicy, ContinuousCritic
 from stable_baselines3.common.preprocessing import get_action_dim
@@ -142,15 +144,17 @@ class HierarchicalActor(BasePolicy):
         # fix this
         actions1 = self.actor_s(obs, deterministic)
         # convert actions1?
-        actions2 = self.actors_p(obs, actions1, deterministic)
-        actions1 = nn.functional.one_hot(actions1, num_classes=self.action_dim_s)
+        # actions2 = self.actors_p(obs, actions1, deterministic)
+        # actions1 = nn.functional.one_hot(actions1, num_classes=self.action_dim_s)
+        actions2 = self.actors_p(obs, th.argmax(actions1, dim=1), deterministic)
         return self.concat_values(actions1, actions2)
 
     def action_log_prob(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
         actions1, log_prob1 = self.actor_s.action_log_prob(obs)
         # convert actions1?
-        actions2, log_prob2 = self.actors_p.action_log_prob(obs, actions1)
-        actions1 = nn.functional.one_hot(actions1, num_classes=self.action_dim_s)
+        # actions2, log_prob2 = self.actors_p.action_log_prob(obs, actions1)
+        # actions1 = nn.functional.one_hot(actions1, num_classes=self.action_dim_s)
+        actions2, log_prob2 = self.actors_p.action_log_prob(obs, th.argmax(actions1, dim=1))
         return self.concat_values(actions1, actions2), log_prob1, log_prob2
 
     def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
@@ -231,7 +235,8 @@ class CategoricalActor(BasePolicy):
         self.latent_pi = nn.Sequential(*latent_pi_net)
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
 
-        self.action_dist = CategoricalDistribution(action_dim_s)
+        # self.action_dist = CategoricalDistribution(action_dim_s)
+        self.action_dist = RelaxedOneHotCategoricalDistribution(action_dim_s)
         self.mu = self.action_dist.proba_distribution_net(latent_dim=last_layer_dim)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:

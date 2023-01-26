@@ -7,7 +7,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 from torch import nn
-from torch.distributions import Bernoulli, Categorical, Normal
+from torch.distributions import Bernoulli, Categorical, Normal, OneHotCategorical, RelaxedOneHotCategorical
 
 from stable_baselines3.common.preprocessing import get_action_dim
 
@@ -17,6 +17,8 @@ SelfSquashedDiagGaussianDistribution = TypeVar(
     "SelfSquashedDiagGaussianDistribution", bound="SquashedDiagGaussianDistribution"
 )
 SelfCategoricalDistribution = TypeVar("SelfCategoricalDistribution", bound="CategoricalDistribution")
+SelfOneHotCategoricalDistribution = TypeVar("SelfOneHotCategoricalDistribution", bound="OneHotCategoricalDistribution")
+SelfRelaxedOneHotCategoricalDistribution = TypeVar("SelfRelaxedOneHotCategoricalDistribution", bound="RelaxedOneHotCategoricalDistribution")
 SelfMultiCategoricalDistribution = TypeVar("SelfMultiCategoricalDistribution", bound="MultiCategoricalDistribution")
 SelfBernoulliDistribution = TypeVar("SelfBernoulliDistribution", bound="BernoulliDistribution")
 SelfStateDependentNoiseDistribution = TypeVar("SelfStateDependentNoiseDistribution", bound="StateDependentNoiseDistribution")
@@ -310,6 +312,105 @@ class CategoricalDistribution(Distribution):
         log_prob = self.log_prob(actions)
         return actions, log_prob
 
+class OneHotCategoricalDistribution(Distribution):
+    """
+    OneHotCategorical distribution for discrete actions.
+
+    :param action_dim: Number of discrete actions
+    """
+
+    def __init__(self, action_dim: int):
+        super().__init__()
+        self.action_dim = action_dim
+
+    def proba_distribution_net(self, latent_dim: int) -> nn.Module:
+        """
+        Create the layer that represents the distribution:
+        it will be the logits of the OneHotCategorical distribution.
+        You can then get probabilities using a softmax.
+
+        :param latent_dim: Dimension of the last layer
+            of the policy network (before the action layer)
+        :return:
+        """
+        action_logits = nn.Linear(latent_dim, self.action_dim)
+        return action_logits
+
+    def proba_distribution(self: SelfOneHotCategoricalDistribution, action_logits: th.Tensor) -> SelfOneHotCategoricalDistribution:
+        self.distribution = OneHotCategorical(logits=action_logits)
+        return self
+
+    def log_prob(self, actions: th.Tensor) -> th.Tensor:
+        return self.distribution.log_prob(actions)
+
+    def entropy(self) -> th.Tensor:
+        return self.distribution.entropy()
+
+    def sample(self) -> th.Tensor:
+        return self.distribution.sample()
+
+    def mode(self) -> th.Tensor:
+        return th.argmax(self.distribution.probs, dim=1)
+
+    def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
+        # Update the proba distribution
+        self.proba_distribution(action_logits)
+        return self.get_actions(deterministic=deterministic)
+
+    def log_prob_from_params(self, action_logits: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+        actions = self.actions_from_params(action_logits)
+        log_prob = self.log_prob(actions)
+        return actions, log_prob
+
+class RelaxedOneHotCategoricalDistribution(Distribution):
+    """
+    OneHotCategorical distribution for discrete actions.
+
+    :param action_dim: Number of discrete actions
+    """
+
+    def __init__(self, action_dim: int):
+        super().__init__()
+        self.action_dim = action_dim
+
+    def proba_distribution_net(self, latent_dim: int) -> nn.Module:
+        """
+        Create the layer that represents the distribution:
+        it will be the logits of the OneHotCategorical distribution.
+        You can then get probabilities using a softmax.
+
+        :param latent_dim: Dimension of the last layer
+            of the policy network (before the action layer)
+        :return:
+        """
+        action_logits = nn.Linear(latent_dim, self.action_dim)
+        return action_logits
+
+    def proba_distribution(self: SelfRelaxedOneHotCategoricalDistribution, action_logits: th.Tensor) -> SelfRelaxedOneHotCategoricalDistribution:
+        self.distribution = RelaxedOneHotCategorical(th.ones(1), logits=action_logits)
+        return self
+
+    def log_prob(self, actions: th.Tensor) -> th.Tensor:
+        return self.distribution.log_prob(actions)
+
+    def entropy(self) -> th.Tensor:
+        return self.distribution.entropy()
+
+    def sample(self) -> th.Tensor:
+        return self.distribution.sample()
+
+    def mode(self) -> th.Tensor:
+        return th.argmax(self.distribution.probs, dim=1)
+
+    def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
+        # Update the proba distribution
+        self.proba_distribution(action_logits)
+        return self.get_actions(deterministic=deterministic)
+
+    def log_prob_from_params(self, action_logits: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+        actions = self.actions_from_params(action_logits)
+        log_prob = self.log_prob(actions)
+        return actions, log_prob
 
 class MultiCategoricalDistribution(Distribution):
     """

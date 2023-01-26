@@ -6,7 +6,6 @@ import numpy as np
 import torch as th
 from gym import spaces
 from torch.nn import functional as F
-import pdb
 
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
@@ -77,12 +76,6 @@ class MAPLE(OffPolicyAlgorithm):
         Setting it to auto, the code will be run on the GPU if possible.
     :param _init_setup_model: Whether or not to build the network at the creation of the instance
     """
-
-    # policy_aliases: Dict[str, Type[BasePolicy]] = {
-    #     "MlpPolicy": MlpPolicy,
-    #     "CnnPolicy": CnnPolicy,
-    #     "MultiInputPolicy": MultiInputPolicy,
-    # }
 
     policy_aliases: Dict[str, Type[BasePolicy]] = {
         "MlpPolicy": MlpPolicy,
@@ -231,11 +224,12 @@ class MAPLE(OffPolicyAlgorithm):
         # Running mean and running var
         self.batch_norm_stats = get_parameters_by_name(self.critic, ["running_"])
         self.batch_norm_stats_target = get_parameters_by_name(self.critic_target, ["running_"])
-
         # Target entropy is used when learning the entropy coefficient
         if self.target_entropy_s == "auto":
             # automatically set target entropy if needed
             self.target_entropy_s = -np.prod(self.action_dim_s).astype(np.float32)
+            # # since we use one-hot encoding, we scale accordingly
+            # self.target_entropy_s = np.log(self.action_dim_s) * 0.75
         else:
             # Force conversion
             # this will also throw an error for unexpected string
@@ -367,7 +361,8 @@ class MAPLE(OffPolicyAlgorithm):
                 next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 # add entropy term 
-                next_q_values = next_q_values - ent_coef_s * next_log_prob_s.reshape(-1, 1) - ent_coef_p * next_log_prob_p.reshape(-1, 1)
+                # next_q_values = next_q_values - ent_coef_s * next_log_prob_s.reshape(-1, 1) - ent_coef_p * next_log_prob_p.reshape(-1, 1)
+                next_q_values = next_q_values - ent_coef_p * next_log_prob_p.reshape(-1, 1)
                 # td error + entropy term
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
@@ -389,7 +384,8 @@ class MAPLE(OffPolicyAlgorithm):
             # Min over all critic networks
             q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
             min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
-            actor_loss = (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
+            # actor_loss = (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
+            actor_loss = (ent_coef_p * log_prob_p - min_qf_pi).mean()
             actor_losses.append(actor_loss.item())
 
             # Optimize the actor
