@@ -408,6 +408,7 @@ class TAMER(OffPolicyAlgorithm):
                 simulated_human_rewards = self.q_val_threshold * teacher_q_values < student_q_values
                 simulated_human_rewards = simulated_human_rewards.float()
                 simulated_human_rewards = simulated_human_rewards * 2 - 1
+                simulated_human_rewards = simulated_human_rewards.cpu()
 
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
