@@ -410,7 +410,7 @@ class TAMER(OffPolicyAlgorithm):
                         th.from_numpy(actions).to(self.device),
                     )
                     student_q_values, _ = th.min(th.cat(student_q_values, dim=1), dim=1, keepdim=True)
-                    simulated_human_rewards = student_q_values
+                    simulated_human_rewards = student_q_values.cpu()
             else:
                 with th.no_grad():
                     student_q_values = self.trained_model.critic(
