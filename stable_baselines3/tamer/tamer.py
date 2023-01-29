@@ -301,7 +301,7 @@ class TAMER(OffPolicyAlgorithm):
 
             if self.use_bc:
                 with th.no_grad():
-                    teacher_actions, _ = self.trained_model.actor(replay_data.observations, deterministic=True)
+                    teacher_actions, _ = self.trained_model.actor.action_log_prob(replay_data.observations)
                 mseloss = th.nn.MSELoss()
                 actor_loss = mseloss(actions_pi, teacher_actions)
             else:
