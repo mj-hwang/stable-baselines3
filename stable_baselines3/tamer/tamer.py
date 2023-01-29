@@ -104,6 +104,7 @@ class TAMER(OffPolicyAlgorithm):
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
         q_val_threshold: float = 0.999,
+        delta_q_val_threshold: float = 0.00000001,
         rl_threshold: float = 0.1,
         percent_feedback: float = 1.0,
     ):
@@ -146,6 +147,7 @@ class TAMER(OffPolicyAlgorithm):
         self.trained_model = trained_model
         self.curr_episode_timesteps = 0
         self.q_val_threshold = q_val_threshold
+        self.delta_q_val_threshold = delta_q_val_threshold
         self.rl_threshold = rl_threshold
         self.percent_feedback = percent_feedback
         self.total_feedback = 0
@@ -409,7 +411,8 @@ class TAMER(OffPolicyAlgorithm):
                 simulated_human_rewards = simulated_human_rewards.float()
                 simulated_human_rewards = simulated_human_rewards * 2 - 1
                 simulated_human_rewards = simulated_human_rewards.cpu()
-            self.q_val_threshold += 0.00000001
+            
+            self.q_val_threshold += min(1.0, self.q_val_threshold + self.delta_q_val_threshold)
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
 
