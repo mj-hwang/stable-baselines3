@@ -299,7 +299,7 @@ class TAMER(OffPolicyAlgorithm):
                 + (1 - self.rl_threshold) * q_values_pi_human
             )
 
-            if use_bc:
+            if self.use_bc:
                 with th.no_grad:
                     teacher_actions, _ = self.trained_model.predict(replay_data.observations)
                 mseloss = th.nn.MSELoss()
@@ -403,7 +403,7 @@ class TAMER(OffPolicyAlgorithm):
             # Select action randomly or according to policy
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
-            if use_supervised_q:
+            if self.use_supervised_q:
                 with th.no_grad():
                     student_q_values = self.trained_model.critic(
                         th.from_numpy(self._last_obs).to(self.device),
