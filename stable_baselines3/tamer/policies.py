@@ -475,7 +475,7 @@ class SACHPolicy(SACPolicy):
             critic_parameters = self.critic.parameters()
 
             self.human_critic = self.make_critic(features_extractor=None)
-            human_critic_parameters = self.critic.parameters()
+            human_critic_parameters = self.human_critic.parameters()
 
         # Critic target should not share the features extractor with critic
         self.critic_target = self.make_critic(features_extractor=None)

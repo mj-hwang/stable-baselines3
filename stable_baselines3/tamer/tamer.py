@@ -276,9 +276,7 @@ class TAMER(OffPolicyAlgorithm):
 
             # Get current Q-values estimates for human critic network
             # using action from the replay buffer
-            current_human_q_values = self.human_critic(
-                replay_data.observations, replay_data.actions
-            )
+            current_human_q_values = self.human_critic(replay_data.observations, replay_data.actions)
 
             # Compute human critic loss
             human_critic_loss = 0.5 * sum([F.mse_loss(current_human_q, target_human_q_values) for current_human_q in current_human_q_values])
