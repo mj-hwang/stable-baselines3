@@ -107,6 +107,8 @@ class TAMER(OffPolicyAlgorithm):
         delta_q_val_threshold: float = 0.00000001,
         rl_threshold: float = 0.1,
         percent_feedback: float = 1.0,
+        use_bc: bool = False,
+        use_supervised_q: bool = False,
     ):
 
         super().__init__(
@@ -151,6 +153,8 @@ class TAMER(OffPolicyAlgorithm):
         self.rl_threshold = rl_threshold
         self.percent_feedback = percent_feedback
         self.total_feedback = 0
+        self.use_bc = use_bc
+        self.use_supervised_q = use_supervised_q
 
         if _init_setup_model:
             self._setup_model()
@@ -295,8 +299,14 @@ class TAMER(OffPolicyAlgorithm):
                 + (1 - self.rl_threshold) * q_values_pi_human
             )
 
-            min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
-            actor_loss = (ent_coef * log_prob - min_qf_pi).mean()
+            if use_bc:
+                with th.no_grad:
+                    teacher_actions, _ = self.trained_model.predict(replay_data.observations)
+                mseloss = th.nn.MSELoss()
+                actor_loss = mseloss(actions_pi, teacher_actions)
+            else:
+                min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
+                actor_loss = (ent_coef * log_prob - min_qf_pi).mean()
             actor_losses.append(actor_loss.item())
 
             # Optimize the actor
@@ -393,26 +403,36 @@ class TAMER(OffPolicyAlgorithm):
             # Select action randomly or according to policy
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
-            with th.no_grad():
-                student_q_values = self.trained_model.critic(
-                    th.from_numpy(self._last_obs).to(self.device),
-                    th.from_numpy(actions).to(self.device),
-                )
-                student_q_values, _ = th.min(th.cat(student_q_values, dim=1), dim=1, keepdim=True)
+            if use_supervised_q:
+                with th.no_grad():
+                    student_q_values = self.trained_model.critic(
+                        th.from_numpy(self._last_obs).to(self.device),
+                        th.from_numpy(actions).to(self.device),
+                    )
+                    student_q_values, _ = th.min(th.cat(student_q_values, dim=1), dim=1, keepdim=True)
+                    simulated_human_rewards = student_q_values
+            else:
+                with th.no_grad():
+                    student_q_values = self.trained_model.critic(
+                        th.from_numpy(self._last_obs).to(self.device),
+                        th.from_numpy(actions).to(self.device),
+                    )
+                    student_q_values, _ = th.min(th.cat(student_q_values, dim=1), dim=1, keepdim=True)
 
-                teacher_actions, _ = self.trained_model.predict(self._last_obs)
-                teacher_q_values = self.trained_model.critic(
-                    th.from_numpy(self._last_obs).to(self.device),
-                    th.from_numpy(teacher_actions).to(self.device),
-                )
-                teacher_q_values, _ = th.min(th.cat(teacher_q_values, dim=1), dim=1, keepdim=True)
+                    teacher_actions, _ = self.trained_model.predict(self._last_obs)
+                    teacher_q_values = self.trained_model.critic(
+                        th.from_numpy(self._last_obs).to(self.device),
+                        th.from_numpy(teacher_actions).to(self.device),
+                    )
+                    teacher_q_values, _ = th.min(th.cat(teacher_q_values, dim=1), dim=1, keepdim=True)
 
-                simulated_human_rewards = self.q_val_threshold * teacher_q_values < student_q_values
-                simulated_human_rewards = simulated_human_rewards.float()
-                simulated_human_rewards = simulated_human_rewards * 2 - 1
-                simulated_human_rewards = simulated_human_rewards.cpu()
-            
-            self.q_val_threshold += min(1.0, self.q_val_threshold + self.delta_q_val_threshold)
+                    simulated_human_rewards = self.q_val_threshold * teacher_q_values < student_q_values
+                    simulated_human_rewards = simulated_human_rewards.float()
+                    simulated_human_rewards = simulated_human_rewards * 2 - 1
+                    simulated_human_rewards = simulated_human_rewards.cpu()
+                
+                self.q_val_threshold += min(1.0, self.q_val_threshold + self.delta_q_val_threshold)
+
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
 
