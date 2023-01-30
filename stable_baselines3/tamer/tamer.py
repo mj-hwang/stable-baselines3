@@ -252,9 +252,10 @@ class TAMER(OffPolicyAlgorithm):
                     target_q_values = self.trained_model.critic(replay_data.observations, replay_data.actions)
                     target_q_values, _ = th.min(th.cat(target_q_values, dim=1), dim=1, keepdim=True)
                     target_q_values = target_q_values
+                    target_human_q_values = replay_data.human_rewards
                 
                 current_q_values = self.critic(replay_data.observations, replay_data.actions)
-                
+
                 critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
                 critic_losses.append(critic_loss.item())
 
@@ -262,6 +263,19 @@ class TAMER(OffPolicyAlgorithm):
                 self.critic.optimizer.zero_grad()
                 critic_loss.backward()
                 self.critic.optimizer.step()
+
+                # Get current Q-values estimates for human critic network
+                # using action from the replay buffer
+                current_human_q_values = self.human_critic(replay_data.observations, replay_data.actions)
+
+                # Compute human critic loss
+                human_critic_loss = 0.5 * sum([F.mse_loss(current_human_q, target_human_q_values) for current_human_q in current_human_q_values])
+                human_critic_losses.append(human_critic_loss.item())
+
+                # Optimize the human critic
+                self.human_critic.optimizer.zero_grad()
+                human_critic_loss.backward()
+                self.human_critic.optimizer.step()
 
                 # Compute actor loss
                 # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
