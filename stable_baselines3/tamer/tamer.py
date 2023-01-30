@@ -247,45 +247,61 @@ class TAMER(OffPolicyAlgorithm):
                 ent_coef_loss.backward()
                 self.ent_coef_optimizer.step()
 
-            with th.no_grad():
-                # Select action according to policy
-                next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
-                # Compute the next Q values: min over all critics targets
-                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
-                next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-                # add entropy term
-                next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
-                # td error + entropy term
-                target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
-                
-                # target human q vals
-                target_human_q_values = replay_data.human_rewards
+            if self.use_supervised_q:
+                with th.no_grad():
+                    target_q_values = self.trained_model.critic(
+                        th.from_numpy(self._last_obs).to(self.device),
+                        th.from_numpy(actions).to(self.device),
+                    )
+                    target_q_values, _ = th.min(th.cat(target_q_values, dim=1), dim=1, keepdim=True)
+                    target_q_values = target_q_values
 
-            # Get current Q-values estimates for each critic network
-            # using action from the replay buffer
-            current_q_values = self.critic(replay_data.observations, replay_data.actions)
+                critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+                # Optimize the critic
+                self.critic.optimizer.zero_grad()
+                critic_loss.backward()
+                self.critic.optimizer.step()
 
-            # Compute critic loss
-            critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
-            critic_losses.append(critic_loss.item())
+            else:
+                with th.no_grad():
+                    # Select action according to policy
+                    next_actions, next_log_prob = self.actor.action_log_prob(replay_data.next_observations)
+                    # Compute the next Q values: min over all critics targets
+                    next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
+                    next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
+                    # add entropy term
+                    next_q_values = next_q_values - ent_coef * next_log_prob.reshape(-1, 1)
+                    # td error + entropy term
+                    target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
+                    
+                    # target human q vals
+                    target_human_q_values = replay_data.human_rewards
 
-            # Optimize the critic
-            self.critic.optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic.optimizer.step()
+                # Get current Q-values estimates for each critic network
+                # using action from the replay buffer
+                current_q_values = self.critic(replay_data.observations, replay_data.actions)
 
-            # Get current Q-values estimates for human critic network
-            # using action from the replay buffer
-            current_human_q_values = self.human_critic(replay_data.observations, replay_data.actions)
+                # Compute critic loss
+                critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+                critic_losses.append(critic_loss.item())
 
-            # Compute human critic loss
-            human_critic_loss = 0.5 * sum([F.mse_loss(current_human_q, target_human_q_values) for current_human_q in current_human_q_values])
-            human_critic_losses.append(human_critic_loss.item())
+                # Optimize the critic
+                self.critic.optimizer.zero_grad()
+                critic_loss.backward()
+                self.critic.optimizer.step()
 
-            # Optimize the human critic
-            self.human_critic.optimizer.zero_grad()
-            human_critic_loss.backward()
-            self.human_critic.optimizer.step()
+                # Get current Q-values estimates for human critic network
+                # using action from the replay buffer
+                current_human_q_values = self.human_critic(replay_data.observations, replay_data.actions)
+
+                # Compute human critic loss
+                human_critic_loss = 0.5 * sum([F.mse_loss(current_human_q, target_human_q_values) for current_human_q in current_human_q_values])
+                human_critic_losses.append(human_critic_loss.item())
+
+                # Optimize the human critic
+                self.human_critic.optimizer.zero_grad()
+                human_critic_loss.backward()
+                self.human_critic.optimizer.step()
 
             # Compute actor loss
             # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
@@ -327,6 +343,7 @@ class TAMER(OffPolicyAlgorithm):
         self.logger.record("train/critic_loss", np.mean(critic_losses))
         self.logger.record("train/human_critic_loss", np.mean(human_critic_losses))
         self.logger.record("train/rl_threshold", self.rl_threshold)
+        self.logger.record("train/q_val_threshold", self.q_val_threshold)
         if len(ent_coef_losses) > 0:
             self.logger.record("train/ent_coef_loss", np.mean(ent_coef_losses))
 
