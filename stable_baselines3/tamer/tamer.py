@@ -254,7 +254,10 @@ class TAMER(OffPolicyAlgorithm):
                     target_q_values = target_q_values
                 
                 current_q_values = self.critic(replay_data.observations, replay_data.actions)
+                
                 critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
+                critic_losses.append(critic_loss.item())
+
                 # Optimize the critic
                 self.critic.optimizer.zero_grad()
                 critic_loss.backward()
