@@ -474,8 +474,7 @@ class HumanReplayBuffer(BaseBuffer):
             # deactivated by default (timeouts is initialized as an array of False)
             (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1),
             self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env),
-            self.human_rewards[batch_inds, env_indices].reshape(-1, 1),
-            # self._normalize_reward(self.human_rewards[batch_inds, env_indices].reshape(-1, 1), env),
+            self._normalize_reward(self.human_rewards[batch_inds, env_indices].reshape(-1, 1), env),
         )
         return HumanReplayBufferSamples(*tuple(map(self.to_torch, data)))
 
