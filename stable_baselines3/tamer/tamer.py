@@ -249,13 +249,11 @@ class TAMER(OffPolicyAlgorithm):
 
             if self.use_supervised_q:
                 with th.no_grad():
-                    target_q_values = self.trained_model.critic(
-                        th.from_numpy(self._last_obs).to(self.device),
-                        th.from_numpy(actions).to(self.device),
-                    )
+                    target_q_values = self.trained_model.critic(replay_data.observations, replay_data.actions)
                     target_q_values, _ = th.min(th.cat(target_q_values, dim=1), dim=1, keepdim=True)
                     target_q_values = target_q_values
-
+                
+                current_q_values = self.critic(replay_data.observations, replay_data.actions)
                 critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
                 # Optimize the critic
                 self.critic.optimizer.zero_grad()
