@@ -260,6 +260,11 @@ class TAMER(OffPolicyAlgorithm):
                 critic_loss.backward()
                 self.critic.optimizer.step()
 
+                # Compute actor loss
+                # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
+                # Min over all critic networks
+                q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
+
             else:
                 with th.no_grad():
                     # Select action according to policy
@@ -301,15 +306,15 @@ class TAMER(OffPolicyAlgorithm):
                 human_critic_loss.backward()
                 self.human_critic.optimizer.step()
 
-            # Compute actor loss
-            # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
-            # Min over all critic networks
-            q_values_pi_critic = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
-            q_values_pi_human = th.cat(self.human_critic(replay_data.observations, actions_pi), dim=1)
-            q_values_pi = (
-                self.rl_threshold * q_values_pi_critic
-                + (1 - self.rl_threshold) * q_values_pi_human
-            )
+                # Compute actor loss
+                # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
+                # Min over all critic networks
+                q_values_pi_critic = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
+                q_values_pi_human = th.cat(self.human_critic(replay_data.observations, actions_pi), dim=1)
+                q_values_pi = (
+                    self.rl_threshold * q_values_pi_critic
+                    + (1 - self.rl_threshold) * q_values_pi_human
+                )
 
             if self.use_bc:
                 with th.no_grad():
