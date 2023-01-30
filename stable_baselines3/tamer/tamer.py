@@ -280,7 +280,7 @@ class TAMER(OffPolicyAlgorithm):
                 # Compute actor loss
                 # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
                 # Min over all critic networks
-                q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
+                q_values_pi = th.cat(self.human_critic(replay_data.observations, actions_pi), dim=1)
 
             else:
                 with th.no_grad():
