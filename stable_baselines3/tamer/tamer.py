@@ -277,9 +277,6 @@ class TAMER(OffPolicyAlgorithm):
                 human_critic_loss.backward()
                 self.human_critic.optimizer.step()
 
-                # Compute actor loss
-                # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
-                # Min over all critic networks
                 q_values_pi = th.cat(self.human_critic(replay_data.observations, actions_pi), dim=1)
 
             else:
@@ -323,9 +320,6 @@ class TAMER(OffPolicyAlgorithm):
                 human_critic_loss.backward()
                 self.human_critic.optimizer.step()
 
-                # Compute actor loss
-                # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
-                # Min over all critic networks
                 q_values_pi_critic = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
                 q_values_pi_human = th.cat(self.human_critic(replay_data.observations, actions_pi), dim=1)
                 q_values_pi = (
@@ -339,6 +333,9 @@ class TAMER(OffPolicyAlgorithm):
                 mseloss = th.nn.MSELoss()
                 actor_loss = mseloss(actions_pi, teacher_actions)
             else:
+                # Compute actor loss
+                # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
+                # Min over all critic networks
                 min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
                 actor_loss = (ent_coef * log_prob - min_qf_pi).mean()
             actor_losses.append(actor_loss.item())
@@ -482,6 +479,9 @@ class TAMER(OffPolicyAlgorithm):
 
             # Retrieve reward and episode length if using Monitor wrapper
             self._update_info_buffer(infos, dones)
+
+            # Reshape simulated human rewards
+            simulated_human_rewards = simulated_human_rewards.numpy().reshape(rewards.shape)
 
             # Store data in replay buffer (normalized action and unnormalized observation)
             self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, simulated_human_rewards, dones, infos)
