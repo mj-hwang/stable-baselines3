@@ -104,7 +104,7 @@ class TAMER(OffPolicyAlgorithm):
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
         q_val_threshold: float = 0.999,
-        delta_q_val_threshold: float = 0.000001,
+        delta_q_val_threshold: float = 0.000000001,
         rl_threshold: float = 0.1,
         percent_feedback: float = 1.0,
         use_bc: bool = False,
