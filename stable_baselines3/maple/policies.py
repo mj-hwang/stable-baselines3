@@ -24,6 +24,7 @@ from stable_baselines3.common.torch_layers import (
 from stable_baselines3.common.type_aliases import Schedule
 
 # CAP the standard deviation of the actor
+LOGITS_SCALE = 10
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
@@ -260,16 +261,18 @@ class CategoricalActor(BasePolicy):
     def forward(self, obs: th.Tensor, deterministic: bool = False) -> th.Tensor:
         features = self.extract_features(obs, self.features_extractor)
         latent_pi = self.latent_pi(features)
-        mean_actions = self.mu(latent_pi)
+        logits = self.mu(latent_pi)
+        logits = th.clamp(logits, -LOGITS_SCALE, LOGITS_SCALE)
         # Note: the action is squashed
-        return self.action_dist.actions_from_params(mean_actions, deterministic=deterministic)
+        return self.action_dist.actions_from_params(logits, deterministic=deterministic)
 
     def action_log_prob(self, obs: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
         features = self.extract_features(obs, self.features_extractor)
         latent_pi = self.latent_pi(features)
-        mean_actions = self.mu(latent_pi)
+        logits = self.mu(latent_pi)
+        logits = th.clamp(logits, -LOGITS_SCALE, LOGITS_SCALE)
         # return action and associated log prob
-        return self.action_dist.log_prob_from_params(mean_actions)
+        return self.action_dist.log_prob_from_params(logits)
 
     def _predict(self, observation: th.Tensor, deterministic: bool = False) -> th.Tensor:
         return self(observation, deterministic)

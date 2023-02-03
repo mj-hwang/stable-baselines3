@@ -361,8 +361,8 @@ class MAPLE(OffPolicyAlgorithm):
                 next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 # add entropy term 
-                # next_q_values = next_q_values - ent_coef_s * next_log_prob_s.reshape(-1, 1) - ent_coef_p * next_log_prob_p.reshape(-1, 1)
-                next_q_values = next_q_values - ent_coef_p * next_log_prob_p.reshape(-1, 1)
+                next_q_values = next_q_values - ent_coef_s * next_log_prob_s.reshape(-1, 1) - ent_coef_p * next_log_prob_p.reshape(-1, 1)
+                # next_q_values = next_q_values - ent_coef_p * next_log_prob_p.reshape(-1, 1)
                 # td error + entropy term
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
 
@@ -384,8 +384,8 @@ class MAPLE(OffPolicyAlgorithm):
             # Min over all critic networks
             q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
             min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
-            # actor_loss = (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
-            actor_loss = (ent_coef_p * log_prob_p - min_qf_pi).mean()
+            actor_loss = (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
+            # actor_loss = (ent_coef_p * log_prob_p - min_qf_pi).mean()
             actor_losses.append(actor_loss.item())
 
             # Optimize the actor

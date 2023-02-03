@@ -397,7 +397,7 @@ class RelaxedOneHotCategoricalDistribution(Distribution):
         return self.distribution.entropy()
 
     def sample(self) -> th.Tensor:
-        return self.distribution.sample()
+        return self.distribution.rsample()
 
     def mode(self) -> th.Tensor:
         return th.argmax(self.distribution.probs, dim=1)
