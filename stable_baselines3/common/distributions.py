@@ -373,7 +373,6 @@ class RelaxedOneHotCategoricalDistribution(Distribution):
         super().__init__()
         self.action_dim = action_dim
         self.device = device
-        print(self.device)
 
     def proba_distribution_net(self, latent_dim: int) -> nn.Module:
         """
@@ -389,7 +388,10 @@ class RelaxedOneHotCategoricalDistribution(Distribution):
         return action_logits
 
     def proba_distribution(self: SelfRelaxedOneHotCategoricalDistribution, action_logits: th.Tensor) -> SelfRelaxedOneHotCategoricalDistribution:
-        self.distribution = RelaxedOneHotCategorical(th.ones(1).to(self.device), logits=action_logits)
+        if torch.cuda.is_available():
+            self.distribution = RelaxedOneHotCategorical(th.ones(1).cuda(), logits=action_logits)
+        else:
+            self.distribution = RelaxedOneHotCategorical(th.ones(1), logits=action_logits)
         return self
 
     def log_prob(self, actions: th.Tensor) -> th.Tensor:
