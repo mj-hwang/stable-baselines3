@@ -388,7 +388,7 @@ class RelaxedOneHotCategoricalDistribution(Distribution):
         return action_logits
 
     def proba_distribution(self: SelfRelaxedOneHotCategoricalDistribution, action_logits: th.Tensor) -> SelfRelaxedOneHotCategoricalDistribution:
-        if torch.cuda.is_available():
+        if th.cuda.is_available():
             self.distribution = RelaxedOneHotCategorical(th.ones(1).cuda(), logits=action_logits)
         else:
             self.distribution = RelaxedOneHotCategorical(th.ones(1), logits=action_logits)
