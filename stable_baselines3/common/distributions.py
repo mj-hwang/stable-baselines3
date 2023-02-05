@@ -372,8 +372,8 @@ class RelaxedOneHotCategoricalDistribution(Distribution):
     def __init__(self, action_dim: int, device):
         super().__init__()
         self.action_dim = action_dim
-        print(self.device)
         self.device = device
+        print(self.device)
 
     def proba_distribution_net(self, latent_dim: int) -> nn.Module:
         """
