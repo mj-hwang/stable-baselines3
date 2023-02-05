@@ -237,7 +237,7 @@ class CategoricalActor(BasePolicy):
         last_layer_dim = net_arch[-1] if len(net_arch) > 0 else features_dim
 
         # self.action_dist = CategoricalDistribution(action_dim_s)
-        self.action_dist = RelaxedOneHotCategoricalDistribution(action_dim_s)
+        self.action_dist = RelaxedOneHotCategoricalDistribution(action_dim_s, device=self.device)
         self.mu = self.action_dist.proba_distribution_net(latent_dim=last_layer_dim)
 
     def _get_constructor_parameters(self) -> Dict[str, Any]:
