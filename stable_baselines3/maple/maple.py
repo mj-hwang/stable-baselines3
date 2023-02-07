@@ -559,9 +559,15 @@ class MAPLE(OffPolicyAlgorithm):
 
     def _get_torch_save_params(self) -> Tuple[List[str], List[str]]:
         state_dicts = ["policy", "actor.optimizer", "critic.optimizer"]
-        if self.ent_coef_optimizer is not None:
-            saved_pytorch_variables = ["log_ent_coef"]
-            state_dicts.append("ent_coef_optimizer")
+        saved_pytorch_variables = []
+        if self.ent_coef_s_optimizer is not None:
+            saved_pytorch_variables = ["log_ent_coef_s"]
+            state_dicts.append("ent_coef_s_optimizer")
         else:
-            saved_pytorch_variables = ["ent_coef_tensor"]
+            saved_pytorch_variables.append("ent_coef_s_tensor")
+        if self.ent_coef_p_optimizer is not None:
+            saved_pytorch_variables = ["log_ent_coef_p"]
+            state_dicts.append("ent_coef_p_optimizer")
+        else:
+            saved_pytorch_variables.append("ent_coef_p_tensor")
         return state_dicts, saved_pytorch_variables
