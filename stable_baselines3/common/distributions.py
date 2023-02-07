@@ -350,7 +350,9 @@ class OneHotCategoricalDistribution(Distribution):
         return self.distribution.sample()
 
     def mode(self) -> th.Tensor:
-        return th.argmax(self.distribution.probs, dim=1)
+        max_idx = th.argmax(self.distribution.probs, dim=1)
+        one_hot = nn.functional.one_hot(max_idx, num_classes=self.action_dim)
+        return one_hot
 
     def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # Update the proba distribution
@@ -404,7 +406,9 @@ class RelaxedOneHotCategoricalDistribution(Distribution):
         return self.distribution.rsample()
 
     def mode(self) -> th.Tensor:
-        return th.argmax(self.distribution.probs, dim=1)
+        max_idx = th.argmax(self.distribution.probs, dim=1)
+        one_hot = nn.functional.one_hot(max_idx, num_classes=self.action_dim)
+        return one_hot
 
     def actions_from_params(self, action_logits: th.Tensor, deterministic: bool = False) -> th.Tensor:
         # Update the proba distribution
