@@ -283,7 +283,6 @@ class MAPLE(OffPolicyAlgorithm):
             # is passed
             self.ent_coef_p_tensor = th.tensor(float(self.ent_coef_p), device=self.device)
 
-
     def _create_aliases(self) -> None:
         self.actor = self.policy.actor
         self.critic = self.policy.critic
@@ -429,6 +428,46 @@ class MAPLE(OffPolicyAlgorithm):
             reset_num_timesteps=reset_num_timesteps,
             progress_bar=progress_bar,
         )
+
+    def _dump_logs(self) -> None:
+        """
+        Write log.
+        """
+        time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
+        fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
+        self.logger.record("time/episodes", self._episode_num, exclude="tensorboard")
+        if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
+            self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
+            self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
+        self.logger.record("time/fps", fps)
+        self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
+        self.logger.record("time/total_timesteps", self.num_timesteps)
+        self.logger.record("time/total_skill_timesteps", self.num_skill_timesteps)
+        if self.use_sde:
+            self.logger.record("train/std", (self.actor.get_std()).mean().item())
+
+        if len(self.ep_success_buffer) > 0:
+            self.logger.record("rollout/success_rate", safe_mean(self.ep_success_buffer))
+        # Pass the number of timesteps for tensorboard
+        self.logger.dump(step=self.num_timesteps)
+
+    def _excluded_save_params(self) -> List[str]:
+        return super()._excluded_save_params() + ["actor", "critic", "critic_target"]
+
+    def _get_torch_save_params(self) -> Tuple[List[str], List[str]]:
+        state_dicts = ["policy", "actor.optimizer", "critic.optimizer"]
+        saved_pytorch_variables = []
+        if self.ent_coef_s_optimizer is not None:
+            saved_pytorch_variables = ["log_ent_coef_s"]
+            state_dicts.append("ent_coef_s_optimizer")
+        else:
+            saved_pytorch_variables.append("ent_coef_s_tensor")
+        if self.ent_coef_p_optimizer is not None:
+            saved_pytorch_variables = ["log_ent_coef_p"]
+            state_dicts.append("ent_coef_p_optimizer")
+        else:
+            saved_pytorch_variables.append("ent_coef_p_tensor")
+        return state_dicts, saved_pytorch_variables
     
     def collect_rollouts(
         self,
@@ -531,43 +570,3 @@ class MAPLE(OffPolicyAlgorithm):
         callback.on_rollout_end()
 
         return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training)
-
-    def _dump_logs(self) -> None:
-        """
-        Write log.
-        """
-        time_elapsed = max((time.time_ns() - self.start_time) / 1e9, sys.float_info.epsilon)
-        fps = int((self.num_timesteps - self._num_timesteps_at_start) / time_elapsed)
-        self.logger.record("time/episodes", self._episode_num, exclude="tensorboard")
-        if len(self.ep_info_buffer) > 0 and len(self.ep_info_buffer[0]) > 0:
-            self.logger.record("rollout/ep_rew_mean", safe_mean([ep_info["r"] for ep_info in self.ep_info_buffer]))
-            self.logger.record("rollout/ep_len_mean", safe_mean([ep_info["l"] for ep_info in self.ep_info_buffer]))
-        self.logger.record("time/fps", fps)
-        self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
-        self.logger.record("time/total_timesteps", self.num_timesteps)
-        self.logger.record("time/total_skill_timesteps", self.num_skill_timesteps)
-        if self.use_sde:
-            self.logger.record("train/std", (self.actor.get_std()).mean().item())
-
-        if len(self.ep_success_buffer) > 0:
-            self.logger.record("rollout/success_rate", safe_mean(self.ep_success_buffer))
-        # Pass the number of timesteps for tensorboard
-        self.logger.dump(step=self.num_timesteps)
-
-    def _excluded_save_params(self) -> List[str]:
-        return super()._excluded_save_params() + ["actor", "critic", "critic_target"]
-
-    def _get_torch_save_params(self) -> Tuple[List[str], List[str]]:
-        state_dicts = ["policy", "actor.optimizer", "critic.optimizer"]
-        saved_pytorch_variables = []
-        if self.ent_coef_s_optimizer is not None:
-            saved_pytorch_variables = ["log_ent_coef_s"]
-            state_dicts.append("ent_coef_s_optimizer")
-        else:
-            saved_pytorch_variables.append("ent_coef_s_tensor")
-        if self.ent_coef_p_optimizer is not None:
-            saved_pytorch_variables = ["log_ent_coef_p"]
-            state_dicts.append("ent_coef_p_optimizer")
-        else:
-            saved_pytorch_variables.append("ent_coef_p_tensor")
-        return state_dicts, saved_pytorch_variables

@@ -462,9 +462,7 @@ class SACHPolicy(SACPolicy):
             # otherwise, there are gradient computation issues
             critic_parameters = [param for name, param in self.critic.named_parameters() if "features_extractor" not in name]
 
-            self.human_critic = self.make_critic(
-                features_extractor=self.actor.features_extractor
-            )
+            self.human_critic = self.make_critic(features_extractor=self.actor.features_extractor)
             # Do not optimize the shared features extractor with the critic loss
             # otherwise, there are gradient computation issues
             human_critic_parameters = [param for name, param in self.human_critic.named_parameters() if "features_extractor" not in name]
