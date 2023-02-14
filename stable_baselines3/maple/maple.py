@@ -227,9 +227,9 @@ class MAPLE(OffPolicyAlgorithm):
         # Target entropy is used when learning the entropy coefficient
         if self.target_entropy_s == "auto":
             # automatically set target entropy if needed
-            self.target_entropy_s = -np.prod(self.action_dim_s).astype(np.float32)
+            # self.target_entropy_s = -np.prod(self.action_dim_s).astype(np.float32)
             # # since we use one-hot encoding, we scale accordingly
-            # self.target_entropy_s = np.log(self.action_dim_s) * 0.75
+            self.target_entropy_s = np.log(self.action_dim_s) * 0.5
         else:
             # Force conversion
             # this will also throw an error for unexpected string
