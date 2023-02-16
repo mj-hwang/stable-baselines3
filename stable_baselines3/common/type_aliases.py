@@ -52,13 +52,22 @@ class ReplayBufferSamples(NamedTuple):
     dones: th.Tensor
     rewards: th.Tensor
 
-class HumanReplayBufferSamples(NamedTuple):
+
+class MixedReplayBufferSamples(NamedTuple):
     observations: th.Tensor
     actions: th.Tensor
     next_observations: th.Tensor
     dones: th.Tensor
     rewards: th.Tensor
     human_rewards: th.Tensor
+
+
+class HumanReplayBufferSamples(NamedTuple):
+    observations: th.Tensor
+    actions: th.Tensor
+    dones: th.Tensor
+    human_rewards: th.Tensor
+
 
 class DictReplayBufferSamples(NamedTuple):
     observations: TensorDict

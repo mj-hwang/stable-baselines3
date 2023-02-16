@@ -6,7 +6,7 @@ import torch as th
 from gym import spaces
 from torch.nn import functional as F
 
-from stable_baselines3.common.buffers import HumanReplayBuffer
+from stable_baselines3.common.buffers import MixedReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
@@ -88,7 +88,7 @@ class TAMER(OffPolicyAlgorithm):
         train_freq: Union[int, Tuple[int, str]] = 1,
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[HumanReplayBuffer]] = HumanReplayBuffer,
+        replay_buffer_class: Optional[Type[MixedReplayBuffer]] = MixedReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         optimize_memory_usage: bool = False,
         ent_coef: Union[str, float] = "auto",
@@ -162,8 +162,10 @@ class TAMER(OffPolicyAlgorithm):
         super()._setup_model()
         self._create_aliases()
         # Running mean and running var
-        self.batch_norm_stats = get_parameters_by_name(self.critic, ["running_"])
-        self.batch_norm_stats_target = get_parameters_by_name(self.critic_target, ["running_"])
+        self.critic_batch_norm_stats = get_parameters_by_name(self.critic, ["running_"])
+        self.critic_batch_norm_stats_target = get_parameters_by_name(self.critic_target, ["running_"])
+        self.human_critic_batch_norm_stats = get_parameters_by_name(self.human_critic, ["running_"])
+        self.human_critic_batch_norm_stats_target = get_parameters_by_name(self.human_critic_target, ["running_"])
         # Target entropy is used when learning the entropy coefficient
         if self.target_entropy == "auto":
             # automatically set target entropy if needed
@@ -315,7 +317,8 @@ class TAMER(OffPolicyAlgorithm):
                 polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
                 polyak_update(self.human_critic.parameters(), self.human_critic_target.parameters(), self.tau)
                 # Copy running stats, see GH issue #996
-                polyak_update(self.batch_norm_stats, self.batch_norm_stats_target, 1.0)
+                polyak_update(self.critic_batch_norm_stats, self.critic_batch_norm_stats_target, 1.0)
+                polyak_update(self.human_critic_batch_norm_stats, self.human_critic_batch_norm_stats_target, 1.0)
 
         self._n_updates += gradient_steps
 
@@ -365,7 +368,7 @@ class TAMER(OffPolicyAlgorithm):
         env: VecEnv,
         callback: BaseCallback,
         train_freq: TrainFreq,
-        replay_buffer: HumanReplayBuffer,
+        replay_buffer: MixedReplayBuffer,
         action_noise: Optional[ActionNoise] = None,
         learning_starts: int = 0,
         log_interval: Optional[int] = None,
@@ -478,7 +481,7 @@ class TAMER(OffPolicyAlgorithm):
 
     def _store_transition(
         self,
-        replay_buffer: HumanReplayBuffer,
+        replay_buffer: MixedReplayBuffer,
         buffer_action: np.ndarray,
         new_obs: Union[np.ndarray, Dict[str, np.ndarray]],
         reward: np.ndarray,

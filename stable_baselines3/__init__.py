@@ -12,6 +12,7 @@ from stable_baselines3.sac import SAC
 from stable_baselines3.td3 import TD3
 from stable_baselines3.maple import MAPLE
 from stable_baselines3.tamer import TAMER
+from stable_baselines3.seed import SEED, SEEDHuman
 
 # Small monkey patch so gym 0.21 is compatible with numpy >= 1.24
 # TODO: remove when upgrading to gym 0.26
@@ -39,6 +40,8 @@ __all__ = [
     "TD3",
     "MAPLE",
     "TAMER",
+    "SEED",
+    "SEEDHuman",
     "HerReplayBuffer",
     "get_system_info",
 ]

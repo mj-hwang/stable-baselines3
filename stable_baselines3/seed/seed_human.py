@@ -1,5 +1,6 @@
 import sys
 import time
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -7,7 +8,7 @@ import torch as th
 from gym import spaces
 from torch.nn import functional as F
 
-from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.buffers import HumanReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
@@ -17,14 +18,14 @@ from stable_baselines3.common.utils import get_parameters_by_name, polyak_update
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
 # from stable_baselines3.maple.policies import CnnPolicy, MlpPolicy, MultiInputPolicy, SACPolicy
-from stable_baselines3.maple.policies import MlpPolicy, MAPLEPolicy
+from stable_baselines3.seed.policies import MlpHumanPolicy, MlpDiscreteHumanPolicy, SEEDHumanPolicy, SEEDDiscreteHumanPolicy
 
-SelfMAPLE = TypeVar("SelfMAPLE", bound="MAPLE")
+SelfSEED = TypeVar("SelfSEEDHuman", bound="SEEDHuman")
 
 
-class MAPLE(OffPolicyAlgorithm):
+class SEEDHuman(OffPolicyAlgorithm):
     """
-    MAPLE + Soft Actor-Critic (SAC)
+    MAPLE + TAMER with Human Feedback
     Off-Policy Maximum Entropy Deep Reinforcement Learning with Hierarichal Actors and Primitives.
     This implementation borrows code from Stable Baselines 3.
     MAPLE Paper: https://arxiv.org/abs/2110.03655
@@ -54,9 +55,6 @@ class MAPLE(OffPolicyAlgorithm):
     :param replay_buffer_class: Replay buffer class to use (for instance ``HerReplayBuffer``).
         If ``None``, it will be automatically selected.
     :param replay_buffer_kwargs: Keyword arguments to pass to the replay buffer on creation.
-    :param optimize_memory_usage: Enable a memory efficient variant of the replay buffer
-        at a cost of more complexity.
-        See https://github.com/DLR-RM/stable-baselines3/issues/37#issuecomment-637501195
     :param ent_coef: Entropy regularization coefficient. (Equivalent to
         inverse of reward scale in the original SAC paper.)  Controlling exploration/exploitation trade-off.
         Set it to 'auto' to learn it automatically (and 'auto_0.1' for using 0.1 as initial value)
@@ -79,12 +77,13 @@ class MAPLE(OffPolicyAlgorithm):
     """
 
     policy_aliases: Dict[str, Type[BasePolicy]] = {
-        "MlpPolicy": MlpPolicy,
+        "MlpHumanPolicy": MlpHumanPolicy,
+        "MlpDiscreteHumanPolicy": MlpDiscreteHumanPolicy,
     }
 
     def __init__(
         self,
-        policy: Union[str, Type[MAPLEPolicy]],
+        policy: Union[str, Type[SEEDHumanPolicy]],
         env: Union[GymEnv, str],
         action_dim_s: int = 0,
         learning_rate: Union[float, Schedule] = 3e-4,
@@ -96,9 +95,8 @@ class MAPLE(OffPolicyAlgorithm):
         train_freq: Union[int, Tuple[int, str]] = 1,
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[ReplayBuffer]] = None,
+        replay_buffer_class: Optional[Type[HumanReplayBuffer]] = HumanReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
-        optimize_memory_usage: bool = False,
         ent_coef_s: Union[str, float] = "auto",
         ent_coef_p: Union[str, float] = "auto",
         target_update_interval: int = 1,
@@ -137,12 +135,18 @@ class MAPLE(OffPolicyAlgorithm):
             use_sde=use_sde,
             sde_sample_freq=sde_sample_freq,
             use_sde_at_warmup=use_sde_at_warmup,
-            optimize_memory_usage=optimize_memory_usage,
+            optimize_memory_usage=False,
             supported_action_spaces=(spaces.Box),
             support_multi_env=True,
         )
 
+        print(self.policy_class.__name__)
+        self.use_discrete = self.policy_class.__name__ == "SEEDDiscreteHumanPolicy"
+
         self.num_skill_timesteps = 0
+        self.num_feedbacks = 0
+
+        self.loss_weight = th.Tensor([1.0, 10.0])
 
         self.target_entropy_s = target_entropy_s
         self.target_entropy_p = target_entropy_p
@@ -173,7 +177,6 @@ class MAPLE(OffPolicyAlgorithm):
             self.action_space,
             device=self.device,
             n_envs=self.n_envs,
-            optimize_memory_usage=self.optimize_memory_usage,
             **self.replay_buffer_kwargs,
         )
 
@@ -192,14 +195,14 @@ class MAPLE(OffPolicyAlgorithm):
 
         self._create_aliases()
         # Running mean and running var
-        self.critic_batch_norm_stats = get_parameters_by_name(self.critic, ["running_"])
-        self.critic_batch_norm_stats_target = get_parameters_by_name(self.critic_target, ["running_"])
+        self.human_critic_batch_norm_stats = get_parameters_by_name(self.human_critic, ["running_"])
+        self.human_critic_batch_norm_stats_target = get_parameters_by_name(self.human_critic_target, ["running_"])
         # Target entropy is used when learning the entropy coefficient
         if self.target_entropy_s == "auto":
             # automatically set target entropy if needed
-            # self.target_entropy_s = -np.prod(self.action_dim_s).astype(np.float32)
+            self.target_entropy_s = -np.prod(self.action_dim_s).astype(np.float32)
             # # since we use one-hot encoding, we scale accordingly
-            self.target_entropy_s = np.log(self.action_dim_s) * 0.5
+            # self.target_entropy_s = np.log(self.action_dim_s) * 0.75
         else:
             # Force conversion
             # this will also throw an error for unexpected string
@@ -255,14 +258,14 @@ class MAPLE(OffPolicyAlgorithm):
 
     def _create_aliases(self) -> None:
         self.actor = self.policy.actor
-        self.critic = self.policy.critic
-        self.critic_target = self.policy.critic_target
+        self.human_critic = self.policy.human_critic
+        self.human_critic_target = self.policy.human_critic_target
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
         # Update optimizers learning rate
-        optimizers = [self.actor.optimizer, self.critic.optimizer]
+        optimizers = [self.actor.optimizer, self.human_critic.optimizer]
         if self.ent_coef_s_optimizer is not None:
             optimizers += [self.ent_coef_s_optimizer]
         if self.ent_coef_p_optimizer is not None:
@@ -273,7 +276,7 @@ class MAPLE(OffPolicyAlgorithm):
 
         ent_coef_s_losses, ent_coefs_s = [], []
         ent_coef_p_losses, ent_coefs_p = [], []
-        actor_losses, critic_losses = [], []
+        actor_losses, human_critic_losses = [], []
 
         for gradient_step in range(gradient_steps):
             # Sample replay buffer
@@ -324,36 +327,40 @@ class MAPLE(OffPolicyAlgorithm):
                 self.ent_coef_p_optimizer.step()
 
             with th.no_grad():
-                # Select action according to policy
-                next_actions, next_log_prob_s, next_log_prob_p = self.actor.action_log_prob(replay_data.next_observations)
-                # Compute the next Q values: min over all critics targets
-                next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
-                next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
-                # add entropy term 
-                next_q_values = next_q_values - ent_coef_s * next_log_prob_s.reshape(-1, 1) - ent_coef_p * next_log_prob_p.reshape(-1, 1)
-                # next_q_values = next_q_values - ent_coef_p * next_log_prob_p.reshape(-1, 1)
-                # td error + entropy term
-                target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
+                # target human q vals
+                target_human_q_values = replay_data.human_rewards
 
-            # Get current Q-values estimates for each critic network
+            # Get current Q-values estimates for human critic network
             # using action from the replay buffer
-            current_q_values = self.critic(replay_data.observations, replay_data.actions)
+            current_human_q_values = self.human_critic(replay_data.observations, replay_data.actions)
 
-            # Compute critic loss
-            critic_loss = 0.5 * sum(F.mse_loss(current_q, target_q_values) for current_q in current_q_values)
-            critic_losses.append(critic_loss.item())
+            if not self.use_discrete:
+                # Compute human critic loss
+                human_critic_loss = 0.5 * sum([F.mse_loss(current_human_q, target_human_q_values) for current_human_q in current_human_q_values])
+            else:
+                # convert human rewards to classes ({-1, 1} -> {0, 1})
+                target_human_q_values_labels = ((target_human_q_values.squeeze(-1) + 1) / 2).to(dtype=th.long)
+                human_critic_loss = F.cross_entropy(current_human_q_values, target_human_q_values_labels, weight=self.loss_weight)
+            
+            human_critic_losses.append(human_critic_loss.item())
 
-            # Optimize the critic
-            self.critic.optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic.optimizer.step()
+            # Optimize the human critic
+            self.human_critic.optimizer.zero_grad()
+            human_critic_loss.backward()
+            self.human_critic.optimizer.step()
 
             # Compute actor loss
             # Alternative: actor_loss = th.mean(log_prob - qf1_pi)
             # Min over all critic networks
-            q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
-            min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
-            actor_loss = (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
+            if not self.use_discrete:
+                q_values_pi = th.cat(self.human_critic(replay_data.observations, actions_pi), dim=1)
+                min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
+            else:
+                min_qf_pi = self.human_critic._predict(replay_data.observations, actions_pi).unsqueeze(-1)
+
+            print("entropy terms:", ent_coef_s * log_prob_s + ent_coef_p * log_prob_p)
+            print("min_qf_pi:", )
+            actor_loss = 100 * (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
             # actor_loss = (ent_coef_p * log_prob_p - min_qf_pi).mean()
             actor_losses.append(actor_loss.item())
 
@@ -364,9 +371,9 @@ class MAPLE(OffPolicyAlgorithm):
 
             # Update target networks
             if gradient_step % self.target_update_interval == 0:
-                polyak_update(self.critic.parameters(), self.critic_target.parameters(), self.tau)
+                polyak_update(self.human_critic.parameters(), self.human_critic_target.parameters(), self.tau)
                 # Copy running stats, see GH issue #996
-                polyak_update(self.critic_batch_norm_stats, self.critic_batch_norm_stats_target, 1.0)
+                polyak_update(self.human_critic_batch_norm_stats, self.human_critic_batch_norm_stats_target, 1.0)
 
         self._n_updates += gradient_steps
 
@@ -374,21 +381,21 @@ class MAPLE(OffPolicyAlgorithm):
         self.logger.record("train/ent_coef_s", np.mean(ent_coefs_s))
         self.logger.record("train/ent_coef_p", np.mean(ent_coefs_p))
         self.logger.record("train/actor_loss", np.mean(actor_losses))
-        self.logger.record("train/critic_loss", np.mean(critic_losses))
+        self.logger.record("train/human_critic_loss", np.mean(human_critic_losses))
         if len(ent_coef_s_losses) > 0:
             self.logger.record("train/ent_coef_s_loss", np.mean(ent_coef_s_losses))
         if len(ent_coef_p_losses) > 0:
             self.logger.record("train/ent_coef_p_loss", np.mean(ent_coef_p_losses))
 
     def learn(
-        self: SelfMAPLE,
+        self: SelfSEED,
         total_timesteps: int,
         callback: MaybeCallback = None,
         log_interval: int = 4,
-        tb_log_name: str = "MAPLE",
+        tb_log_name: str = "SEED",
         reset_num_timesteps: bool = True,
         progress_bar: bool = False,
-    ) -> SelfMAPLE:
+    ) -> SelfSEED:
 
         return super().learn(
             total_timesteps=total_timesteps,
@@ -398,7 +405,7 @@ class MAPLE(OffPolicyAlgorithm):
             reset_num_timesteps=reset_num_timesteps,
             progress_bar=progress_bar,
         )
-
+    
     def _dump_logs(self) -> None:
         """
         Write log.
@@ -413,6 +420,7 @@ class MAPLE(OffPolicyAlgorithm):
         self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
         self.logger.record("time/total_timesteps", self.num_timesteps)
         self.logger.record("time/total_skill_timesteps", self.num_skill_timesteps)
+        self.logger.record("time/num_feedbacks", self.num_feedbacks)
         if self.use_sde:
             self.logger.record("train/std", (self.actor.get_std()).mean().item())
 
@@ -422,10 +430,10 @@ class MAPLE(OffPolicyAlgorithm):
         self.logger.dump(step=self.num_timesteps)
 
     def _excluded_save_params(self) -> List[str]:
-        return super()._excluded_save_params() + ["actor", "critic", "critic_target"]
+        return super()._excluded_save_params() + ["actor", "human_critic", "human_critic_target", "trained_model"]
 
     def _get_torch_save_params(self) -> Tuple[List[str], List[str]]:
-        state_dicts = ["policy", "actor.optimizer", "critic.optimizer"]
+        state_dicts = ["policy", "actor.optimizer", "human_critic.optimizer"]
         saved_pytorch_variables = []
         if self.ent_coef_s_optimizer is not None:
             saved_pytorch_variables = ["log_ent_coef_s"]
@@ -444,13 +452,13 @@ class MAPLE(OffPolicyAlgorithm):
         env: VecEnv,
         callback: BaseCallback,
         train_freq: TrainFreq,
-        replay_buffer: ReplayBuffer,
+        replay_buffer: HumanReplayBuffer,
         action_noise: Optional[ActionNoise] = None,
         learning_starts: int = 0,
         log_interval: Optional[int] = None,
     ) -> RolloutReturn:
         """
-        Collect experiences and store them into a ``ReplayBuffer``.
+        Collect experiences and store them into a ``HumanReplayBuffer``.
 
         :param env: The training environment
         :param callback: Callback that will be called at each step
@@ -497,51 +505,82 @@ class MAPLE(OffPolicyAlgorithm):
             # Select action randomly or according to policy
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
-            # Rescale and perform action
-            new_obs, rewards, dones, infos = env.step(actions)
+            # np array
+            # will be replace with actual feedbacks
+            human_rewards = np.array([env.envs[i].human_reward(actions[i]) for i in range(env.num_envs)])
+            self.num_feedbacks += env.num_envs
 
-            print("dones", dones, type(dones))
-            print("rewards", rewards, type(rewards))
-            print("infos", infos, type(infos))
-            import pdb; pdb.set_trace()
+            if int(human_rewards) == -1:
+                dones = np.zeros_like(human_rewards).astype(bool)
+                infos = [{} for _ in range(env.num_envs)]
+                self._store_transition(replay_buffer, buffer_actions, human_rewards, dones, infos)
+            else:
+                # Rescale and perform action
+                new_obs, rewards, dones, infos = env.step(actions)
+                self.num_timesteps += sum([info["num_timesteps"] for info in infos])
+                self.num_skill_timesteps += env.num_envs
+                num_collected_steps += 1
 
-            self.num_timesteps += sum([info["num_timesteps"] for info in infos])
-            self.num_skill_timesteps += env.num_envs
-            num_collected_steps += 1
+                # Give access to local variables
+                callback.update_locals(locals())
+                # Only stop training if return value is False, not when it is None.
+                if callback.on_step() is False:
+                    return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training=False)
 
-            # Give access to local variables
-            callback.update_locals(locals())
-            # Only stop training if return value is False, not when it is None.
-            if callback.on_step() is False:
-                return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training=False)
+                # Retrieve reward and episode length if using Monitor wrapper
+                self._update_info_buffer(infos, dones)
 
-            # Retrieve reward and episode length if using Monitor wrapper
-            self._update_info_buffer(infos, dones)
+                # Store data in replay buffer (normalized action and unnormalized observation)
+                self._store_transition(replay_buffer, buffer_actions, human_rewards, dones, infos, new_obs=new_obs)
 
-            # Store data in replay buffer (normalized action and unnormalized observation)
-            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, dones, infos)
+                self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
 
-            self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
+                # For DQN, check if the target network should be updated
+                # and update the exploration schedule
+                # For SAC/TD3, the update is dones as the same time as the gradient update
+                # see https://github.com/hill-a/stable-baselines/issues/900
+                self._on_step()
 
-            # For DQN, check if the target network should be updated
-            # and update the exploration schedule
-            # For SAC/TD3, the update is dones as the same time as the gradient update
-            # see https://github.com/hill-a/stable-baselines/issues/900
-            self._on_step()
+                for idx, done in enumerate(dones):
+                    if done:
+                        # Update stats
+                        num_collected_episodes += 1
+                        self._episode_num += 1
 
-            for idx, done in enumerate(dones):
-                if done:
-                    # Update stats
-                    num_collected_episodes += 1
-                    self._episode_num += 1
+                        if action_noise is not None:
+                            kwargs = dict(indices=[idx]) if env.num_envs > 1 else {}
+                            action_noise.reset(**kwargs)
 
-                    if action_noise is not None:
-                        kwargs = dict(indices=[idx]) if env.num_envs > 1 else {}
-                        action_noise.reset(**kwargs)
-
-                    # Log training infos
-                    if log_interval is not None and self._episode_num % log_interval == 0:
-                        self._dump_logs()
+                        # Log training infos
+                        if log_interval is not None and self._episode_num % log_interval == 0:
+                            self._dump_logs()
         callback.on_rollout_end()
 
         return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training)
+
+    def _store_transition(
+        self,
+        replay_buffer: HumanReplayBuffer,
+        buffer_action: np.ndarray,
+        human_reward: np.ndarray,
+        dones: np.ndarray,
+        infos: List[Dict[str, Any]],
+        new_obs: Optional[Union[np.ndarray, Dict[str, np.ndarray]]] = None,
+    ) -> None:
+        # Store only the unnormalized version
+        if self._vec_normalize_env is None:
+            self._last_original_obs = self._last_obs
+
+        replay_buffer.add(
+            self._last_original_obs,
+            buffer_action,
+            human_reward,
+            dones,
+            infos,
+        )
+        
+        if new_obs is not None:
+            self._last_obs = new_obs
+            # Save the unnormalized observation
+            if self._vec_normalize_env is not None:
+                self._last_original_obs = new_obs_
