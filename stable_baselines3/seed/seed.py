@@ -120,6 +120,7 @@ class SEED(OffPolicyAlgorithm):
         percent_feedback: float = 1.0,
         use_bc: bool = False,
         use_supervised_q: bool = False,
+        use_env_feedback: bool = False,
     ):
 
         super().__init__(
@@ -175,6 +176,7 @@ class SEED(OffPolicyAlgorithm):
         self.total_feedback = 0
         self.use_bc = use_bc
         self.use_supervised_q = use_supervised_q
+        self.use_env_feedback = use_env_feedback
 
         if _init_setup_model:
             self._setup_model()
@@ -183,46 +185,15 @@ class SEED(OffPolicyAlgorithm):
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
 
-        # Use DictReplayBuffer if needed
-        if self.replay_buffer_class is None:
-            if isinstance(self.observation_space, spaces.Dict):
-                self.replay_buffer_class = DictReplayBuffer
-            else:
-                self.replay_buffer_class = ReplayBuffer
-
-        elif self.replay_buffer_class == HerReplayBuffer:
-            assert self.env is not None, "You must pass an environment when using `HerReplayBuffer`"
-
-            # If using offline sampling, we need a classic replay buffer too
-            if self.replay_buffer_kwargs.get("online_sampling", True):
-                replay_buffer = None
-            else:
-                replay_buffer = DictReplayBuffer(
-                    self.buffer_size,
-                    self.observation_space,
-                    self.action_space,
-                    device=self.device,
-                    optimize_memory_usage=self.optimize_memory_usage,
-                )
-
-            self.replay_buffer = HerReplayBuffer(
-                self.env,
-                self.buffer_size,
-                device=self.device,
-                replay_buffer=replay_buffer,
-                **self.replay_buffer_kwargs,
-            )
-
-        if self.replay_buffer is None:
-            self.replay_buffer = self.replay_buffer_class(
-                self.buffer_size,
-                self.observation_space,
-                self.action_space,
-                device=self.device,
-                n_envs=self.n_envs,
-                optimize_memory_usage=self.optimize_memory_usage,
-                **self.replay_buffer_kwargs,
-            )
+        self.replay_buffer = self.replay_buffer_class(
+            self.buffer_size,
+            self.observation_space,
+            self.action_space,
+            device=self.device,
+            n_envs=self.n_envs,
+            optimize_memory_usage=self.optimize_memory_usage,
+            **self.replay_buffer_kwargs,
+        )
 
         self.policy = self.policy_class(  # pytype:disable=not-instantiable
             self.observation_space,
@@ -587,6 +558,8 @@ class SEED(OffPolicyAlgorithm):
                     )
                     student_q_values, _ = th.min(th.cat(student_q_values, dim=1), dim=1, keepdim=True)
                     simulated_human_rewards = student_q_values.cpu()
+            elif self.use_env_feedback:
+                simulated_human_rewards = np.array([env.envs[i].human_reward(actions[i]) for i in range(env.num_envs)])
             else:
                 with th.no_grad():
                     student_q_values = self.trained_model.critic(
@@ -626,7 +599,7 @@ class SEED(OffPolicyAlgorithm):
             self._update_info_buffer(infos, dones)
 
             # Store data in replay buffer (normalized action and unnormalized observation)
-            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, dones, infos)
+            self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, simulated_human_rewards, dones, infos)
 
             self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
 
