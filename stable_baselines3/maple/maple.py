@@ -167,15 +167,46 @@ class MAPLE(OffPolicyAlgorithm):
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
 
-        self.replay_buffer = self.replay_buffer_class(
-            self.buffer_size,
-            self.observation_space,
-            self.action_space,
-            device=self.device,
-            n_envs=self.n_envs,
-            optimize_memory_usage=self.optimize_memory_usage,
-            **self.replay_buffer_kwargs,
-        )
+        # Use DictReplayBuffer if needed
+        if self.replay_buffer_class is None:
+            if isinstance(self.observation_space, spaces.Dict):
+                self.replay_buffer_class = DictReplayBuffer
+            else:
+                self.replay_buffer_class = ReplayBuffer
+
+        elif self.replay_buffer_class == HerReplayBuffer:
+            assert self.env is not None, "You must pass an environment when using `HerReplayBuffer`"
+
+            # If using offline sampling, we need a classic replay buffer too
+            if self.replay_buffer_kwargs.get("online_sampling", True):
+                replay_buffer = None
+            else:
+                replay_buffer = DictReplayBuffer(
+                    self.buffer_size,
+                    self.observation_space,
+                    self.action_space,
+                    device=self.device,
+                    optimize_memory_usage=self.optimize_memory_usage,
+                )
+
+            self.replay_buffer = HerReplayBuffer(
+                self.env,
+                self.buffer_size,
+                device=self.device,
+                replay_buffer=replay_buffer,
+                **self.replay_buffer_kwargs,
+            )
+
+        if self.replay_buffer is None:
+            self.replay_buffer = self.replay_buffer_class(
+                self.buffer_size,
+                self.observation_space,
+                self.action_space,
+                device=self.device,
+                n_envs=self.n_envs,
+                optimize_memory_usage=self.optimize_memory_usage,
+                **self.replay_buffer_kwargs,
+            )
 
         self.policy = self.policy_class(  # pytype:disable=not-instantiable
             self.observation_space,
