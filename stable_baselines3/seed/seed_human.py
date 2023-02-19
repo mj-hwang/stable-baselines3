@@ -167,6 +167,9 @@ class SEEDHuman(OffPolicyAlgorithm):
         if _init_setup_model:
             self._setup_model()
 
+    def weighted_mse_loss(self, input, target, weight):
+        return (weight * (input - target) ** 2).mean()
+
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
         self.set_random_seed(self.seed)
@@ -277,6 +280,7 @@ class SEEDHuman(OffPolicyAlgorithm):
         ent_coef_s_losses, ent_coefs_s = [], []
         ent_coef_p_losses, ent_coefs_p = [], []
         actor_losses, human_critic_losses = [], []
+        ent_s_losses, ent_p_losses, actor_q_losses, bc_losses = [], [], [], []
 
         for gradient_step in range(gradient_steps):
             # Sample replay buffer
@@ -335,7 +339,10 @@ class SEEDHuman(OffPolicyAlgorithm):
             current_human_q_values = self.human_critic(replay_data.observations, replay_data.actions)
 
             if not self.use_discrete:
-                # Compute human critic loss
+                # Compute human critic loss\
+                # good_action_index = target_human_q_values == 1
+                # weights = good_action_index.float() * 19 + 1
+                # human_critic_loss = 0.5 * sum([self.weighted_mse_loss(current_human_q, target_human_q_values, weights) for current_human_q in current_human_q_values])
                 human_critic_loss = 0.5 * sum([F.mse_loss(current_human_q, target_human_q_values) for current_human_q in current_human_q_values])
             else:
                 # convert human rewards to classes ({-1, 1} -> {0, 1})
@@ -357,11 +364,31 @@ class SEEDHuman(OffPolicyAlgorithm):
                 min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
             else:
                 min_qf_pi = self.human_critic._predict(replay_data.observations, actions_pi).unsqueeze(-1)
+            
+            # good_action_index = good_action_index.squeeze(-1)
+            # good_actions = replay_data.actions[good_action_index]
+            # current_actions = actions_pi[good_action_index]
+            # good_action_same_skill_index = current_actions[:, :self.action_dim_s].argmax(dim=1) == good_actions[:, :self.action_dim_s].argmax(dim=1)
+            
+            # bc_loss = F.mse_loss(current_actions[good_action_same_skill_index, self.action_dim_s:], 
+            #                      good_actions[good_action_same_skill_index, self.action_dim_s:])
 
-            print("entropy terms:", ent_coef_s * log_prob_s + ent_coef_p * log_prob_p)
-            print("min_qf_pi:", )
-            actor_loss = 100 * (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
-            # actor_loss = (ent_coef_p * log_prob_p - min_qf_pi).mean()
+
+            ent_s_loss = (ent_coef_s * log_prob_s).mean()
+            ent_p_loss = (ent_coef_p * log_prob_p).mean()
+            actor_q_loss = (- min_qf_pi).mean()
+            actor_loss = (ent_coef_s * log_prob_s + ent_coef_p * log_prob_p - min_qf_pi).mean()
+            # actor_loss = ent_s_loss + ent_p_loss + actor_q_loss
+            
+            # print("ent_s_loss:", (ent_coef_s * log_prob_s).mean())
+            # print("ent_p_loss:", (ent_coef_p * log_prob_p).mean())
+            # print("actor_q_loss:", actor_q_loss)
+            # print("BC loss mean", bc_loss.mean())
+            
+            ent_s_losses.append(ent_s_loss.item())
+            ent_p_losses.append(ent_p_loss.item())
+            actor_q_losses.append(actor_q_loss.item())
+            # bc_losses.append(bc_loss.item())
             actor_losses.append(actor_loss.item())
 
             # Optimize the actor
@@ -381,6 +408,10 @@ class SEEDHuman(OffPolicyAlgorithm):
         self.logger.record("train/ent_coef_s", np.mean(ent_coefs_s))
         self.logger.record("train/ent_coef_p", np.mean(ent_coefs_p))
         self.logger.record("train/actor_loss", np.mean(actor_losses))
+        self.logger.record("train/ent_s_loss", np.mean(ent_s_losses))
+        self.logger.record("train/ent_p_loss", np.mean(ent_p_losses))
+        self.logger.record("train/actor_q_loss", np.mean(actor_q_losses))
+        # self.logger.record("train/bc_loss", np.mean(bc_losses))
         self.logger.record("train/human_critic_loss", np.mean(human_critic_losses))
         if len(ent_coef_s_losses) > 0:
             self.logger.record("train/ent_coef_s_loss", np.mean(ent_coef_s_losses))
