@@ -111,6 +111,7 @@ class SEEDHuman(OffPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        log_cumulative_reward: bool = True,
     ):
 
         super().__init__(
@@ -145,6 +146,9 @@ class SEEDHuman(OffPolicyAlgorithm):
 
         self.num_skill_timesteps = 0
         self.num_feedbacks = 0
+
+        self.log_cumulative_reward = log_cumulative_reward
+        self.cumulative_reward = 0
 
         self.loss_weight = th.Tensor([1.0, 10.0])
 
@@ -454,6 +458,8 @@ class SEEDHuman(OffPolicyAlgorithm):
         self.logger.record("time/num_feedbacks", self.num_feedbacks)
         if self.use_sde:
             self.logger.record("train/std", (self.actor.get_std()).mean().item())
+        if self.log_cumulative_reward:
+            self.logger.record("time/cumulative_reward", self.cumulative_reward)
 
         if len(self.ep_success_buffer) > 0:
             self.logger.record("rollout/success_rate", safe_mean(self.ep_success_buffer))
@@ -548,6 +554,7 @@ class SEEDHuman(OffPolicyAlgorithm):
             else:
                 # Rescale and perform action
                 new_obs, rewards, dones, infos = env.step(actions)
+                self.cumulative_reward += sum(rewards)
                 self.num_timesteps += sum([info["num_timesteps"] for info in infos])
                 self.num_skill_timesteps += env.num_envs
                 num_collected_steps += 1
