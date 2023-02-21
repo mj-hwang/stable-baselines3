@@ -643,7 +643,6 @@ class BalancedHumanReplayBuffer(BaseBuffer):
                 done,
                 infos,
             ) 
-        
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> HumanReplayBufferSamples:
         """
@@ -657,14 +656,25 @@ class BalancedHumanReplayBuffer(BaseBuffer):
             to normalize the observations/rewards when sampling
         :return:
         """
-        positive_samples = self.postive_buffer.sample(batch_size // 2, env=env)
-        negative_samples = self.negative_buffer.sample(batch_size // 2, env=env)
-        return HumanReplayBufferSamples(*tuple(map(th.cat, zip(positive_samples, negative_samples))))
+        if self.postive_buffer.size() == 0:
+            return self.negative_buffer.sample(batch_size, env=env)
+        elif self.postive_buffer.size() == 0:
+            return self.postive_buffer.sample(batch_size, env=env)
+        else:
+            positive_samples = self.postive_buffer.sample(batch_size // 2, env=env)
+            negative_samples = self.negative_buffer.sample(batch_size // 2, env=env)
+            return HumanReplayBufferSamples(*tuple(map(th.cat, zip(positive_samples, negative_samples))))
 
     def _get_samples(
         self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None
-    ) -> Union[ReplayBufferSamples, RolloutBufferSamples]:
+    ) -> HumanReplayBufferSamples:
         raise NotImplementedError()
+
+    def size(self) -> int:
+        """
+        :return: The current size of the buffer
+        """
+        return self.postive_buffer.size() + self.negative_buffer.size()
 
 class RolloutBuffer(BaseBuffer):
     """
