@@ -591,6 +591,81 @@ class HumanReplayBuffer(BaseBuffer):
         )
         return HumanReplayBufferSamples(*tuple(map(self.to_torch, data)))
 
+class BalancedHumanReplayBuffer(BaseBuffer):
+    """
+    Replay buffer used in ef-based off-policy algorithms like TAMER / SEED.
+
+    :param buffer_size: Max number of element in the buffer
+    :param observation_space: Observation space
+    :param action_space: Action space
+    :param device: PyTorch device
+    :param n_envs: Number of parallel environments
+    :param handle_timeout_termination: Handle timeout termination (due to timelimit)
+        separately and treat the task as infinite horizon task.
+        https://github.com/DLR-RM/stable-baselines3/issues/284
+    """
+
+    def __init__(
+        self,
+        buffer_size: int,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        device: Union[th.device, str] = "auto",
+        n_envs: int = 1,
+        handle_timeout_termination: bool = True,
+    ):
+        super().__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        self.postive_buffer = HumanReplayBuffer(buffer_size // 2, observation_space, action_space, device, n_envs=n_envs, handle_timeout_termination=handle_timeout_termination)
+        self.negative_buffer = HumanReplayBuffer(buffer_size // 2, observation_space, action_space, device, n_envs=n_envs, handle_timeout_termination=handle_timeout_termination)
+
+    def add(
+        self,
+        obs: np.ndarray,
+        action: np.ndarray,
+        human_reward: np.ndarray,
+        done: np.ndarray,
+        infos: List[Dict[str, Any]],
+    ) -> None:
+        
+        if float(human_reward) < 0:
+            self.negative_buffer.add(
+                obs,
+                action,
+                human_reward,
+                done,
+                infos,
+            )
+        else:
+            self.postive_buffer.add(
+                obs,
+                action,
+                human_reward,
+                done,
+                infos,
+            ) 
+        
+
+    def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> HumanReplayBufferSamples:
+        """
+        Sample elements from the replay buffer.
+        Custom sampling when using memory efficient variant,
+        as we should not sample the element with index `self.pos`
+        See https://github.com/DLR-RM/stable-baselines3/pull/28#issuecomment-637559274
+
+        :param batch_size: Number of element to sample
+        :param env: associated gym VecEnv
+            to normalize the observations/rewards when sampling
+        :return:
+        """
+        positive_samples = self.postive_buffer.sample(batch_size // 2, env=env)
+        negative_samples = self.negative_buffer.sample(batch_size // 2, env=env)
+        return HumanReplayBufferSamples(*tuple(map(th.cat, zip(positive_samples, negative_samples))))
+
+    def _get_samples(
+        self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None
+    ) -> Union[ReplayBufferSamples, RolloutBufferSamples]:
+        raise NotImplementedError()
+
 class RolloutBuffer(BaseBuffer):
     """
     Rollout buffer used in on-policy algorithms like A2C/PPO.

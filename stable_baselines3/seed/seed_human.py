@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 from copy import deepcopy
@@ -8,7 +9,7 @@ import torch as th
 from gym import spaces
 from torch.nn import functional as F
 
-from stable_baselines3.common.buffers import HumanReplayBuffer
+from stable_baselines3.common.buffers import BaseBuffer, HumanReplayBuffer, BalancedHumanReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
@@ -95,7 +96,7 @@ class SEEDHuman(OffPolicyAlgorithm):
         train_freq: Union[int, Tuple[int, str]] = 1,
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[HumanReplayBuffer]] = HumanReplayBuffer,
+        replay_buffer_class: Optional[Type[BaseBuffer]] = BalancedHumanReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         ent_coef_s: Union[str, float] = "auto",
         ent_coef_p: Union[str, float] = "auto",
@@ -112,6 +113,7 @@ class SEEDHuman(OffPolicyAlgorithm):
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
         log_cumulative_reward: bool = True,
+        save_freq: int = -1,
     ):
 
         super().__init__(
@@ -146,6 +148,7 @@ class SEEDHuman(OffPolicyAlgorithm):
 
         self.num_skill_timesteps = 0
         self.num_feedbacks = 0
+        self.save_freq = save_freq
 
         self.log_cumulative_reward = log_cumulative_reward
         self.cumulative_reward = 0
@@ -592,6 +595,12 @@ class SEEDHuman(OffPolicyAlgorithm):
                         # Log training infos
                         if log_interval is not None and self._episode_num % log_interval == 0:
                             self._dump_logs()
+
+            if self.save_freq != -1 and self.num_feedbacks % self.save_freq == 0:
+                print(f"Saving the model; Current Num Feedbacks: {self.num_feedbacks}")
+                self.save(os.path.join(self.tensorboard_log, f"model_num_feedbacks_{self.num_feedbacks}"))
+                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_feedbacks_{self.num_feedbacks}"))
+
         callback.on_rollout_end()
 
         return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training)
