@@ -8,7 +8,7 @@ import torch as th
 from gym import spaces
 from torch.nn import functional as F
 
-from stable_baselines3.common.buffers import MixedReplayBuffer
+from stable_baselines3.common.buffers import BaseBuffer, MixedReplayBuffer, BalancedMixedReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
@@ -97,7 +97,7 @@ class SEED(OffPolicyAlgorithm):
         train_freq: Union[int, Tuple[int, str]] = 1,
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[MixedReplayBuffer]] = MixedReplayBuffer,
+        replay_buffer_class: Optional[Type[BaseBuffer]] = BalancedMixedReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         optimize_memory_usage: bool = False,
         ent_coef_s: Union[str, float] = "auto",
