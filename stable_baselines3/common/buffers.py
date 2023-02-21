@@ -658,7 +658,7 @@ class BalancedHumanReplayBuffer(BaseBuffer):
         """
         if self.postive_buffer.size() == 0:
             return self.negative_buffer.sample(batch_size, env=env)
-        elif self.postive_buffer.size() == 0:
+        elif self.negative_buffer.size() == 0:
             return self.postive_buffer.sample(batch_size, env=env)
         else:
             positive_samples = self.postive_buffer.sample(batch_size // 2, env=env)
