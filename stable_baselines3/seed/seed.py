@@ -54,9 +54,6 @@ class SEED(OffPolicyAlgorithm):
     :param replay_buffer_class: Replay buffer class to use (for instance ``HerReplayBuffer``).
         If ``None``, it will be automatically selected.
     :param replay_buffer_kwargs: Keyword arguments to pass to the replay buffer on creation.
-    :param optimize_memory_usage: Enable a memory efficient variant of the replay buffer
-        at a cost of more complexity.
-        See https://github.com/DLR-RM/stable-baselines3/issues/37#issuecomment-637501195
     :param ent_coef: Entropy regularization coefficient. (Equivalent to
         inverse of reward scale in the original SAC paper.)  Controlling exploration/exploitation trade-off.
         Set it to 'auto' to learn it automatically (and 'auto_0.1' for using 0.1 as initial value)
@@ -99,7 +96,6 @@ class SEED(OffPolicyAlgorithm):
         action_noise: Optional[ActionNoise] = None,
         replay_buffer_class: Optional[Type[BaseBuffer]] = BalancedMixedReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
-        optimize_memory_usage: bool = False,
         ent_coef_s: Union[str, float] = "auto",
         ent_coef_p: Union[str, float] = "auto",
         target_update_interval: int = 1,
@@ -145,7 +141,7 @@ class SEED(OffPolicyAlgorithm):
             use_sde=use_sde,
             sde_sample_freq=sde_sample_freq,
             use_sde_at_warmup=use_sde_at_warmup,
-            optimize_memory_usage=optimize_memory_usage,
+            optimize_memory_usage=False,
             supported_action_spaces=(spaces.Box),
             support_multi_env=True,
         )
@@ -191,7 +187,6 @@ class SEED(OffPolicyAlgorithm):
             self.action_space,
             device=self.device,
             n_envs=self.n_envs,
-            optimize_memory_usage=self.optimize_memory_usage,
             **self.replay_buffer_kwargs,
         )
 
