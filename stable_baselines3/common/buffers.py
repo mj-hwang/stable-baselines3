@@ -510,6 +510,7 @@ class BalancedMixedReplayBuffer(BaseBuffer):
     def add(
         self,
         obs: np.ndarray,
+        next_obs: np.ndarray,
         action: np.ndarray,
         reward: np.ndarray,
         human_reward: np.ndarray,
@@ -520,6 +521,7 @@ class BalancedMixedReplayBuffer(BaseBuffer):
         if float(human_reward) < 0:
             self.negative_buffer.add(
                 obs,
+                next_obs,
                 action,
                 reward,
                 human_reward,
@@ -529,6 +531,7 @@ class BalancedMixedReplayBuffer(BaseBuffer):
         else:
             self.postive_buffer.add(
                 obs,
+                next_obs,
                 action,
                 reward,
                 human_reward,
