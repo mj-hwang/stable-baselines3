@@ -457,7 +457,8 @@ class SEEDHuman(OffPolicyAlgorithm):
         self.logger.record("time/fps", fps)
         self.logger.record("time/time_elapsed", int(time_elapsed), exclude="tensorboard")
         self.logger.record("time/total_timesteps", self.num_timesteps)
-        self.logger.record("time/total_skill_timesteps", self.num_skill_timesteps)
+        self.logger.record("time/low_level_action_steps", self.num_ll_steps)
+        self.logger.record("time/high_level_action_steps", self.num_hl_steps)
         self.logger.record("time/num_feedbacks", self.num_feedbacks)
         if self.use_sde:
             self.logger.record("train/std", (self.actor.get_std()).mean().item())
@@ -547,54 +548,53 @@ class SEEDHuman(OffPolicyAlgorithm):
 
             # np array
             # will be replace with actual feedbacks
-            human_rewards = np.array([env.envs[i].human_reward(actions[i]) for i in range(env.num_envs)])
+            human_rewards = np.array([env.envs[i].human_reward(actions[i])[0] for i in range(env.num_envs)])
+            should_execute = [env.envs[i].human_reward(actions[i])[1] for i in range(env.num_envs)][0]
+
             self.num_feedbacks += env.num_envs
 
-            if int(human_rewards) == -1:
-                dones = np.zeros_like(human_rewards).astype(bool)
-                infos = [{} for _ in range(env.num_envs)]
-                self._store_transition(replay_buffer, buffer_actions, human_rewards, dones, infos)
+            if should_execute:
+                new_obs, rewards, dones, infos = env.step(actions, execute=False)
             else:
-                # Rescale and perform action
-                new_obs, rewards, dones, infos = env.step(actions)
-                self.cumulative_reward += sum(rewards)
-                self.num_timesteps += sum([info["num_timesteps"] for info in infos])
-                self.num_skill_timesteps += env.num_envs
-                num_collected_steps += 1
+                new_obs, rewards, dones, infos = env.step(actions, execute=True)
+                self.num_ll_steps += sum([info["num_timesteps"] for info in infos])
+                self.num_hl_steps += 1
 
-                # Give access to local variables
-                callback.update_locals(locals())
-                # Only stop training if return value is False, not when it is None.
-                if callback.on_step() is False:
-                    return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training=False)
+            self.num_timesteps += env.num_envs
 
-                # Retrieve reward and episode length if using Monitor wrapper
-                self._update_info_buffer(infos, dones)
+            # Give access to local variables
+            callback.update_locals(locals())
+            # Only stop training if return value is False, not when it is None.
+            if callback.on_step() is False:
+                return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training=False)
 
-                # Store data in replay buffer (normalized action and unnormalized observation)
-                self._store_transition(replay_buffer, buffer_actions, human_rewards, dones, infos, new_obs=new_obs)
+            # Retrieve reward and episode length if using Monitor wrapper
+            self._update_info_buffer(infos, dones)
 
-                self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
+            # Store data in replay buffer (normalized action and unnormalized observation)
+            self._store_transition(replay_buffer, buffer_actions, human_rewards, dones, infos, new_obs=new_obs)
 
-                # For DQN, check if the target network should be updated
-                # and update the exploration schedule
-                # For SAC/TD3, the update is dones as the same time as the gradient update
-                # see https://github.com/hill-a/stable-baselines/issues/900
-                self._on_step()
+            self._update_current_progress_remaining(self.num_timesteps, self._total_timesteps)
 
-                for idx, done in enumerate(dones):
-                    if done:
-                        # Update stats
-                        num_collected_episodes += 1
-                        self._episode_num += 1
+            # For DQN, check if the target network should be updated
+            # and update the exploration schedule
+            # For SAC/TD3, the update is dones as the same time as the gradient update
+            # see https://github.com/hill-a/stable-baselines/issues/900
+            self._on_step()
 
-                        if action_noise is not None:
-                            kwargs = dict(indices=[idx]) if env.num_envs > 1 else {}
-                            action_noise.reset(**kwargs)
+            for idx, done in enumerate(dones):
+                if done:
+                    # Update stats
+                    num_collected_episodes += 1
+                    self._episode_num += 1
 
-                        # Log training infos
-                        if log_interval is not None and self._episode_num % log_interval == 0:
-                            self._dump_logs()
+                    if action_noise is not None:
+                        kwargs = dict(indices=[idx]) if env.num_envs > 1 else {}
+                        action_noise.reset(**kwargs)
+
+                    # Log training infos
+                    if log_interval is not None and self._episode_num % log_interval == 0:
+                        self._dump_logs()
 
             if self.save_freq != -1 and self.num_feedbacks % self.save_freq == 0:
                 print(f"Saving the model; Current Num Feedbacks: {self.num_feedbacks}")
