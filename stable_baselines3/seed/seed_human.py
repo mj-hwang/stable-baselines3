@@ -551,16 +551,12 @@ class SEEDHuman(OffPolicyAlgorithm):
             # np array
             # will be replace with actual feedbacks
             human_rewards = np.array([env.envs[i].human_reward(actions[i])[0] for i in range(env.num_envs)])
-            should_execute = [env.envs[i].human_reward(actions[i])[1] for i in range(env.num_envs)][0]
 
             self.num_feedbacks += env.num_envs
 
-            if should_execute:
-                new_obs, rewards, dones, infos = env.step(actions)
-            else:
-                new_obs, rewards, dones, infos = env.step(actions)
-                self.num_ll_steps += sum([info["num_timesteps"] for info in infos])
-                self.num_hl_steps += 1
+            new_obs, rewards, dones, infos = env.step(actions)
+            self.num_ll_steps += sum([info["num_ll_steps"] for info in infos])
+            self.num_hl_steps += sum([info["num_hl_steps"] for info in infos])
 
             self.num_timesteps += env.num_envs
 
