@@ -274,6 +274,7 @@ class SEEDHuman(OffPolicyAlgorithm):
         self.human_critic_target = self.policy.human_critic_target
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
+        print("train being called")
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
         # Update optimizers learning rate
@@ -546,6 +547,7 @@ class SEEDHuman(OffPolicyAlgorithm):
                 self.actor.reset_noise(env.num_envs)
 
             # Select action randomly or according to policy
+            print("osb:", self._last_obs)
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
             # np array
@@ -555,10 +557,10 @@ class SEEDHuman(OffPolicyAlgorithm):
             self.num_feedbacks += env.num_envs
 
             new_obs, rewards, dones, infos = env.step(actions)
-            self.num_ll_steps += sum([info["num_ll_steps"] for info in infos])
+            self.num_ll_steps += sum([info["num_ll_steps"] for info in infos]) # can be zero
             self.num_hl_steps += sum([info["num_hl_steps"] for info in infos])
-
             self.num_timesteps += env.num_envs
+            num_collected_steps += 1
 
             # Give access to local variables
             callback.update_locals(locals())
@@ -595,6 +597,7 @@ class SEEDHuman(OffPolicyAlgorithm):
                         self._dump_logs()
 
             if self.save_freq != -1 and self.num_feedbacks % self.save_freq == 0:
+                self._dump_logs()
                 print(f"Saving the model; Current Num Feedbacks: {self.num_feedbacks}")
                 self.save(os.path.join(self.tensorboard_log, f"model_num_feedbacks_{self.num_feedbacks}"))
                 self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_feedbacks_{self.num_feedbacks}"))
