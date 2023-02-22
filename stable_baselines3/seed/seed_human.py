@@ -14,6 +14,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise, VectorizedActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
+from stable_baselines3.common.save_util import load_from_pkl
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit
 from stable_baselines3.common.utils import get_parameters_by_name, polyak_update, safe_mean, should_collect_more_steps
 from stable_baselines3.common.vec_env import VecEnv
@@ -632,3 +633,26 @@ class SEEDHuman(OffPolicyAlgorithm):
             # Save the unnormalized observation
             if self._vec_normalize_env is not None:
                 self._last_original_obs = new_obs_
+
+    def load_replay_buffer(
+        self,
+        path: Union[str, pathlib.Path, io.BufferedIOBase],
+        truncate_last_traj: bool = True,
+    ) -> None:
+        """
+        Load a replay buffer from a pickle file.
+
+        :param path: Path to the pickled replay buffer.
+        :param truncate_last_traj: When using ``HerReplayBuffer`` with online sampling:
+            If set to ``True``, we assume that the last trajectory in the replay buffer was finished
+            (and truncate it).
+            If set to ``False``, we assume that we continue the same trajectory (same episode).
+        """
+        self.replay_buffer = load_from_pkl(path, self.verbose)
+        # assert isinstance(self.replay_buffer, ReplayBuffer), "The replay buffer must inherit from ReplayBuffer class"
+
+        # Backward compatibility with SB3 < 2.1.0 replay buffer
+        # Keep old behavior: do not handle timeout termination separately
+        if not hasattr(self.replay_buffer, "handle_timeout_termination"):  # pragma: no cover
+            self.replay_buffer.handle_timeout_termination = False
+            self.replay_buffer.timeouts = np.zeros_like(self.replay_buffer.dones)
