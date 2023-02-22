@@ -148,6 +148,8 @@ class SEEDHuman(OffPolicyAlgorithm):
 
         self.num_skill_timesteps = 0
         self.num_feedbacks = 0
+        self.num_ll_steps = 0
+        self.num_hl_steps = 0
         self.save_freq = save_freq
 
         self.log_cumulative_reward = log_cumulative_reward
