@@ -492,13 +492,13 @@ class SEED(OffPolicyAlgorithm):
         env: VecEnv,
         callback: BaseCallback,
         train_freq: TrainFreq,
-        replay_buffer: MixedReplayBuffer,
+        replay_buffer: BalancedMixedReplayBuffer,
         action_noise: Optional[ActionNoise] = None,
         learning_starts: int = 0,
         log_interval: Optional[int] = None,
     ) -> RolloutReturn:
         """
-        Collect experiences and store them into a ``MixedReplayBuffer``.
+        Collect experiences and store them into a ``BalancedMixedReplayBuffer``.
 
         :param env: The training environment
         :param callback: Callback that will be called at each step
@@ -623,7 +623,7 @@ class SEED(OffPolicyAlgorithm):
 
     def _store_transition(
         self,
-        replay_buffer: MixedReplayBuffer,
+        replay_buffer: BalancedMixedReplayBuffer,
         buffer_action: np.ndarray,
         new_obs: Union[np.ndarray, Dict[str, np.ndarray]],
         reward: np.ndarray,

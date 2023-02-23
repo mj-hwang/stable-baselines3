@@ -6,7 +6,7 @@ import torch as th
 from gym import spaces
 from torch.nn import functional as F
 
-from stable_baselines3.common.buffers import MixedReplayBuffer
+from stable_baselines3.common.buffers import BaseBuffer, MixedReplayBuffer, BalancedMixedReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
@@ -88,7 +88,7 @@ class TAMER(OffPolicyAlgorithm):
         train_freq: Union[int, Tuple[int, str]] = 1,
         gradient_steps: int = 1,
         action_noise: Optional[ActionNoise] = None,
-        replay_buffer_class: Optional[Type[MixedReplayBuffer]] = MixedReplayBuffer,
+        replay_buffer_class: Optional[Type[BaseBuffer]] = BalancedMixedReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         optimize_memory_usage: bool = False,
         ent_coef: Union[str, float] = "auto",
@@ -368,7 +368,7 @@ class TAMER(OffPolicyAlgorithm):
         env: VecEnv,
         callback: BaseCallback,
         train_freq: TrainFreq,
-        replay_buffer: MixedReplayBuffer,
+        replay_buffer: BalancedMixedReplayBuffer,
         action_noise: Optional[ActionNoise] = None,
         learning_starts: int = 0,
         log_interval: Optional[int] = None,
@@ -481,7 +481,7 @@ class TAMER(OffPolicyAlgorithm):
 
     def _store_transition(
         self,
-        replay_buffer: MixedReplayBuffer,
+        replay_buffer: BalancedMixedReplayBuffer,
         buffer_action: np.ndarray,
         new_obs: Union[np.ndarray, Dict[str, np.ndarray]],
         reward: np.ndarray,
