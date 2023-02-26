@@ -20,7 +20,6 @@ from stable_baselines3.common.save_util import load_from_pkl
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit
 from stable_baselines3.common.utils import get_parameters_by_name, polyak_update, safe_mean, should_collect_more_steps
 from stable_baselines3.common.vec_env import VecEnv
-from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
 # from stable_baselines3.maple.policies import CnnPolicy, MlpPolicy, MultiInputPolicy, SACPolicy
 from stable_baselines3.seed.policies import MlpHumanPolicy, MlpDiscreteHumanPolicy, SEEDHumanPolicy, SEEDDiscreteHumanPolicy
 
@@ -550,7 +549,6 @@ class SEEDHuman(OffPolicyAlgorithm):
                 self.actor.reset_noise(env.num_envs)
 
             # Select action randomly or according to policy
-            print("osb:", self._last_obs)
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
             # np array
@@ -560,6 +558,8 @@ class SEEDHuman(OffPolicyAlgorithm):
             self.num_feedbacks += env.num_envs
 
             new_obs, rewards, dones, infos = env.step(actions)
+            self.cumulative_reward += sum(rewards)
+            
             self.num_ll_steps += sum([info["num_ll_steps"] for info in infos]) # can be zero
             self.num_hl_steps += sum([info["num_hl_steps"] for info in infos])
             self.num_timesteps += env.num_envs
