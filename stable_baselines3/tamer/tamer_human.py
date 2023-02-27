@@ -137,6 +137,7 @@ class TAMERHuman(OffPolicyAlgorithm):
         
         self.log_cumulative_reward = log_cumulative_reward
         self.cumulative_reward = 0
+        self.save_freq = save_freq
 
         self.target_entropy = target_entropy
         self.log_ent_coef = None  # type: Optional[th.Tensor]
@@ -214,6 +215,7 @@ class TAMERHuman(OffPolicyAlgorithm):
         self.human_critic_target = self.policy.human_critic_target
 
     def train(self, gradient_steps: int, batch_size: int = 64) -> None:
+        print("train being called")
         # Switch to train mode (this affects batch norm / dropout)
         self.policy.set_training_mode(True)
         # Update optimizers learning rate
@@ -394,7 +396,6 @@ class TAMERHuman(OffPolicyAlgorithm):
 
             # Select action randomly or according to policy
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
-
             # np array
             # will be replace with actual feedbacks
 
@@ -404,6 +405,13 @@ class TAMERHuman(OffPolicyAlgorithm):
             
             self.cumulative_reward += sum(rewards)
             human_rewards = np.array([env.envs[i].human_reward_after_execution()[0] for i in range(env.num_envs)])
+            
+            while human_rewards == 19.0:
+                print("!!!HERE!!!")
+                self.save(os.path.join(self.tensorboard_log, f"model_num_feedbacks_{self.num_feedbacks}"))
+                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_feedbacks_{self.num_feedbacks}"))
+                print("Saved model and buffer")
+                human_rewards = np.array([env.envs[i].human_reward_after_execution()[0] for i in range(env.num_envs)])
 
             self.num_timesteps += env.num_envs
             num_collected_steps += 1
@@ -441,6 +449,13 @@ class TAMERHuman(OffPolicyAlgorithm):
                     # Log training infos
                     if log_interval is not None and self._episode_num % log_interval == 0:
                         self._dump_logs()
+
+            if self.save_freq != -1 and self.num_feedbacks % self.save_freq == 0:
+                self._dump_logs()
+                print(f"Saving the model; Current Num Feedbacks: {self.num_feedbacks}")
+                self.save(os.path.join(self.tensorboard_log, f"model_num_feedbacks_{self.num_feedbacks}"))
+                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_feedbacks_{self.num_feedbacks}"))
+
         callback.on_rollout_end()
 
         return RolloutReturn(num_collected_steps * env.num_envs, num_collected_episodes, continue_training)

@@ -555,6 +555,12 @@ class SEEDHuman(OffPolicyAlgorithm):
             # will be replace with actual feedbacks
             human_rewards = np.array([env.envs[i].human_reward(actions[i])[0] for i in range(env.num_envs)])
 
+            while human_rewards == 19.0:
+                self.save(os.path.join(self.tensorboard_log, f"model_num_feedbacks_{self.num_feedbacks}"))
+                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_feedbacks_{self.num_feedbacks}"))
+                print("Saved model and buffer")
+                human_rewards = np.array([env.envs[i].human_reward(actions[i])[0] for i in range(env.num_envs)])
+
             self.num_feedbacks += env.num_envs
 
             new_obs, rewards, dones, infos = env.step(actions)
