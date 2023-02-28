@@ -10,7 +10,7 @@ from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
 from stable_baselines3.ppo import PPO
 from stable_baselines3.sac import SAC
 from stable_baselines3.td3 import TD3
-from stable_baselines3.maple import MAPLE
+from stable_baselines3.maple import MAPLE, MAPLEHuman
 from stable_baselines3.tamer import TAMER, TAMERHuman
 from stable_baselines3.seed import SEED, SEEDHuman
 
@@ -39,6 +39,7 @@ __all__ = [
     "SAC",
     "TD3",
     "MAPLE",
+    "MAPLEHuman",
     "TAMER",
     "TAMERHuman",
     "SEED",
