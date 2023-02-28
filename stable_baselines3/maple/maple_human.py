@@ -575,7 +575,7 @@ class MAPLEHuman(OffPolicyAlgorithm):
                     if log_interval is not None and self._episode_num % log_interval == 0:
                         self._dump_logs()
 
-            if self.save_freq != -1 and self.num_feedbacks % self.save_freq == 0:
+            if self.save_freq != -1 and self.num_timesteps % self.save_freq == 0:
                 self._dump_logs()
                 print(f"Saving the model; Current Num Feedbacks: {self.num_feedbacks}")
                 self.save(os.path.join(self.tensorboard_log, f"model_num_feedbacks_{self.num_feedbacks}"))
