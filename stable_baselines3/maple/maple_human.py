@@ -577,9 +577,9 @@ class MAPLEHuman(OffPolicyAlgorithm):
 
             if self.save_freq != -1 and self.num_timesteps % self.save_freq == 0:
                 self._dump_logs()
-                print(f"Saving the model; Current Num Feedbacks: {self.num_feedbacks}")
-                self.save(os.path.join(self.tensorboard_log, f"model_num_feedbacks_{self.num_feedbacks}"))
-                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_feedbacks_{self.num_feedbacks}"))
+                print(f"Saving the model; Current Num Timesteps: {self.num_timesteps}")
+                self.save(os.path.join(self.tensorboard_log, f"model_num_timesteps_{self.num_timesteps}"))
+                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_timesteps_{self.num_timesteps}"))
             
         callback.on_rollout_end()
 
