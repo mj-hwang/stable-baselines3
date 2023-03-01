@@ -109,6 +109,7 @@ class TAMER(OffPolicyAlgorithm):
         percent_feedback: float = 1.0,
         use_bc: bool = False,
         use_supervised_q: bool = False,
+        use_env_feedback: bool = False,
     ):
 
         super().__init__(
@@ -154,6 +155,7 @@ class TAMER(OffPolicyAlgorithm):
         self.total_feedback = 0
         self.use_bc = use_bc
         self.use_supervised_q = use_supervised_q
+        self.use_env_feedback = use_env_feedback
 
         if _init_setup_model:
             self._setup_model()
@@ -403,7 +405,9 @@ class TAMER(OffPolicyAlgorithm):
             # Select action randomly or according to policy
             actions, buffer_actions = self._sample_action(learning_starts, action_noise, env.num_envs)
 
-            if self.use_supervised_q:
+            if self.use_env_feedback:
+                simulated_human_rewards = np.array([env.envs[i].synthetic_human_reward(actions[i]) for i in range(env.num_envs)])
+            elif self.use_supervised_q:
                 with th.no_grad():
                     student_q_values = self.trained_model.critic(
                         th.from_numpy(self._last_obs).to(self.device),
