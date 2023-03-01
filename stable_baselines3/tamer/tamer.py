@@ -453,7 +453,8 @@ class TAMER(OffPolicyAlgorithm):
             self._update_info_buffer(infos, dones)
 
             # Reshape simulated human rewards
-            simulated_human_rewards = simulated_human_rewards.numpy().reshape(rewards.shape)
+            if not self.use_env_feedback:
+                simulated_human_rewards = simulated_human_rewards.numpy().reshape(rewards.shape)
 
             # Store data in replay buffer (normalized action and unnormalized observation)
             self._store_transition(replay_buffer, buffer_actions, new_obs, rewards, simulated_human_rewards, dones, infos)
