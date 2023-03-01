@@ -159,7 +159,8 @@ class MAPLEHuman(OffPolicyAlgorithm):
         self.target_update_interval = target_update_interval
         self.ent_coef_s_optimizer = None
         self.ent_coef_p_optimizer = None
-
+        
+        self.num_hl_steps = 0
         self.num_ll_steps = 0
         
         self.action_dim = self.env.action_space.low.size
@@ -537,7 +538,8 @@ class MAPLEHuman(OffPolicyAlgorithm):
             # Rescale and perform action
             new_obs, rewards, dones, infos = env.step(actions)
 
-            self.num_timesteps += env.num_envs 
+            self.num_timesteps += env.num_envs
+            self.num_hl_steps += env.num_envs
             self.num_ll_steps += sum([info["num_ll_steps"] for info in infos])
             num_collected_steps += 1
 
@@ -575,11 +577,11 @@ class MAPLEHuman(OffPolicyAlgorithm):
                     if log_interval is not None and self._episode_num % log_interval == 0:
                         self._dump_logs()
 
-            if self.save_freq != -1 and self.num_timesteps % self.save_freq == 0:
+            if self.save_freq != -1 and self.num_hl_steps % self.save_freq == 0:
                 self._dump_logs()
-                print(f"Saving the model; Current Num Timesteps: {self.num_timesteps}")
-                self.save(os.path.join(self.tensorboard_log, f"model_num_timesteps_{self.num_timesteps}"))
-                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_timesteps_{self.num_timesteps}"))
+                print(f"Saving the model; Current Num Timesteps: {self.num_hl_steps}")
+                self.save(os.path.join(self.tensorboard_log, f"model_num_timesteps_{self.num_hl_steps}"))
+                self.save_replay_buffer(os.path.join(self.tensorboard_log, f"replaybuffer_num_timesteps_{self.num_hl_steps}"))
             
         callback.on_rollout_end()
 
